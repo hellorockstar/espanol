@@ -15,14 +15,12 @@
         .hidden { display: none !important; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* 针对表格横向滑动的隐藏滚动条美化 */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
 
-    <!-- 顶部导航条 -->
     <header class="w-full max-w-4xl flex justify-between items-center py-4 mb-2">
         <h1 class="text-2xl font-bold text-gray-800 cursor-pointer" onclick="showView('homeView')">🇪🇸 Prisma 云记忆</h1>
         <div class="flex space-x-4">
@@ -32,12 +30,10 @@
         </div>
     </header>
 
-    <!-- 同步状态提示 -->
     <div id="syncStatus" class="w-full max-w-md text-xs text-center text-gray-500 mb-4 h-4">
         尚未配置云端同步
     </div>
 
-    <!-- 视图：主页 (Dashboard) -->
     <main id="homeView" class="w-full max-w-md flex-1 flex flex-col items-center justify-center space-y-6">
         <div class="bg-white shadow-lg rounded-2xl p-8 w-full text-center">
             <h2 class="text-xl text-gray-600 mb-2">今天需要复习</h2>
@@ -52,17 +48,14 @@
         </div>
     </main>
 
-    <!-- 视图：复习/记忆卡 -->
     <main id="reviewView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="text-gray-500 text-sm mb-4 text-center">进度: <span id="reviewProgress">1/5</span></div>
         
         <div class="card-container w-full h-80 relative mb-8" onclick="flipCard()">
             <div id="flashcard" class="card w-full h-full cursor-pointer shadow-xl rounded-2xl">
-                <!-- 正面 -->
                 <div class="card-face bg-white rounded-2xl flex items-center justify-center p-6 border-2 border-gray-100">
                     <h2 id="cardWord" class="text-4xl font-bold text-gray-800 text-center">单词</h2>
                 </div>
-                <!-- 反面 -->
                 <div class="card-back card-face bg-white rounded-2xl flex flex-col items-center justify-center p-6 border-2 border-gray-100">
                     <h2 id="cardMeaning" class="text-3xl font-bold text-gray-800 mb-4 text-center">释义</h2>
                     <div class="w-full bg-blue-50 p-4 rounded-lg text-left">
@@ -81,14 +74,12 @@
         <button onclick="showView('homeView')" class="mt-6 text-gray-400 text-sm text-center w-full">结束复习</button>
     </main>
 
-    <!-- 视图：词库总表 (Dictionary) -->
     <main id="dictionaryView" class="w-full max-w-4xl flex-1 flex flex-col hidden">
         <div class="bg-white shadow-lg rounded-2xl overflow-hidden flex-1 flex flex-col">
             <div class="p-6 border-b border-gray-200 flex justify-between items-center">
                 <h2 class="text-xl font-bold text-gray-800">所有词汇</h2>
                 <span class="text-sm text-gray-500" id="dictTotalCount">共 0 词</span>
             </div>
-            <!-- 表格容器 -->
             <div class="overflow-x-auto hide-scrollbar flex-1 max-h-[70vh]">
                 <table class="min-w-full text-left text-sm whitespace-nowrap">
                     <thead class="uppercase tracking-wider sticky top-0 bg-gray-100 border-b shadow-sm z-10">
@@ -99,17 +90,16 @@
                             <th class="px-6 py-4 font-bold text-gray-700 text-center">加入时间</th>
                             <th class="px-6 py-4 font-bold text-gray-700 text-center">复习次数</th>
                             <th class="px-6 py-4 font-bold text-gray-700 text-center">最近复习</th>
+                            <th class="px-6 py-4 font-bold text-gray-700 text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody id="dictionaryBody" class="divide-y divide-gray-100">
-                        <!-- 动态渲染的行 -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <!-- 视图：导入数据 -->
     <main id="importView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="bg-white shadow-lg rounded-2xl p-6 w-full">
             <div class="flex justify-between items-center mb-4">
@@ -123,7 +113,6 @@
         </div>
     </main>
 
-    <!-- 视图：云端设置 -->
     <main id="settingsView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="bg-white shadow-lg rounded-2xl p-6 w-full">
             <div class="flex justify-between items-center mb-4">
@@ -147,7 +136,6 @@
         </div>
     </main>
 
-    <!-- Toast 提示 -->
     <div id="toast" class="fixed bottom-10 bg-gray-800 text-white px-6 py-3 rounded-full opacity-0 transition-opacity pointer-events-none z-50">
         提示信息
     </div>
@@ -158,16 +146,13 @@
         let currentCardIndex = 0;
         const FILE_NAME = "prisma_vocab.json";
 
-        // 日期格式化辅助函数
         function formatDate(timestamp) {
             if (!timestamp) return '-';
-            // 简单的防呆设计，处理偶尔出现的不合法 ID
             if (timestamp < 1000000000000) return '-'; 
             const d = new Date(timestamp);
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
-        // Gist API 辅助函数
         const githubAPI = {
             getToken: () => localStorage.getItem('gh_token'),
             getGistId: () => localStorage.getItem('gh_gist_id'),
@@ -203,7 +188,6 @@
             }
         };
 
-        // 初始化
         async function init() {
             const localData = localStorage.getItem('prismaVocab');
             if (localData) vocabList = JSON.parse(localData);
@@ -288,14 +272,14 @@
                 newWords.forEach(wordObj => {
                     if (!vocabList.find(v => v.word === wordObj.word)) {
                         vocabList.push({
-                            id: Date.now() + Math.random(), // 既是唯一ID，也用作加入时间的基准
+                            id: Date.now() + Math.random(), 
                             word: wordObj.word,
                             meaning: wordObj.meaning,
                             example: wordObj.example,
                             example_zh: wordObj.example_zh,
                             nextReview: new Date().getTime(),
                             interval: 0,
-                            reviewCount: 0 // 新增：复习次数初始化
+                            reviewCount: 0 
                         });
                         addedCount++;
                     }
@@ -309,24 +293,21 @@
             }
         }
 
-        // 渲染词库总表
         function renderDictionary() {
             document.getElementById('dictTotalCount').innerText = `共 ${vocabList.length} 词`;
             const tbody = document.getElementById('dictionaryBody');
             tbody.innerHTML = '';
             
-            // 按加入时间倒序排列（最新的在最上面）
             const sortedList = [...vocabList].sort((a, b) => b.id - a.id);
 
             sortedList.forEach((word, index) => {
                 const tr = document.createElement('tr');
-                if (index % 2 !== 0) tr.classList.add('bg-gray-50'); // 斑马纹
+                if (index % 2 !== 0) tr.classList.add('bg-gray-50'); 
                 
                 const addedDate = formatDate(word.id);
                 const lastReviewed = formatDate(word.lastReviewed);
                 const reviewCount = word.reviewCount || 0;
                 
-                // 根据复习次数给徽章上色
                 let badgeClass = "bg-gray-200 text-gray-600";
                 if (reviewCount > 5) badgeClass = "bg-green-100 text-green-700";
                 else if (reviewCount > 2) badgeClass = "bg-blue-100 text-blue-700";
@@ -343,9 +324,27 @@
                         <span class="px-2 py-1 rounded-full text-xs font-semibold ${badgeClass}">${reviewCount}</span>
                     </td>
                     <td class="px-6 py-4 text-center text-gray-500">${lastReviewed}</td>
+                    <td class="px-6 py-4 text-center">
+                        <button onclick="deleteWord(${word.id}, '${word.word}')" class="text-red-600 hover:text-red-900 font-bold transition">🗑️ 删除</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        // 新增：精准删除单词功能
+        async function deleteWord(id, wordText) {
+            if (confirm(`确定要永久删除单词 "${wordText}" 吗？\n删除后该词的所有复习记录都将被清空。`)) {
+                // 从列表中过滤掉该单词
+                vocabList = vocabList.filter(v => v.id !== id);
+                
+                // 重新渲染词库视图
+                renderDictionary();
+                
+                // 保存并执行静默云端同步
+                await saveToCloud(true);
+                showToast(`已成功删除单词: ${wordText}`);
+            }
         }
 
         function startReview() {
@@ -401,7 +400,6 @@
                 card.nextReview = now + (card.interval * ONE_DAY);
             }
 
-            // 新增：追踪复习数据
             card.reviewCount = (card.reviewCount || 0) + 1;
             card.lastReviewed = now;
 
