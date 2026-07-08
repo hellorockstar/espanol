@@ -170,7 +170,10 @@
         <div class="bg-white shadow-lg rounded-2xl overflow-hidden flex-1 flex flex-col">
             <div class="p-6 border-b border-gray-200 flex justify-between items-center">
                 <h2 class="text-xl font-bold text-gray-800">所有词汇</h2>
-                <span class="text-sm text-gray-500" id="dictTotalCount">共 0 词</span>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500" id="dictTotalCount">共 0 词</span>
+                    <button onclick="clearDictionary()" class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 transition shadow-sm border border-red-100">🗑️ 清空全部词汇</button>
+                </div>
             </div>
             <div class="overflow-x-auto hide-scrollbar flex-1 max-h-[70vh]">
                 <table class="min-w-full text-left text-sm whitespace-nowrap">
@@ -205,7 +208,7 @@
             
             <button onclick="saveSettings()" class="w-full bg-gray-800 text-white font-bold py-3 rounded-xl mb-4">保存设置</button>
             <hr class="my-6">
-            <button onclick="clearData()" class="w-full bg-red-100 text-red-600 font-bold py-3 rounded-xl text-sm">⚠ 清除本地数据</button>
+            <button onclick="clearData()" class="w-full bg-red-100 text-red-600 font-bold py-3 rounded-xl text-sm">⚠ 恢复出厂设置 (清空词库与所有配置)</button>
         </div>
     </main>
 
@@ -228,7 +231,6 @@
                     const res = await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, { headers: { 'Authorization': `token ${apiConfig.getGhToken()}` } });
                     if (!res.ok) throw new Error('读取失败'); const data = await res.json();
                     
-                    // 同步拉取云端月度 Token 账单
                     if (data.files[TOKEN_FILE_NAME]?.content) {
                         localStorage.setItem('ds_token_history', data.files[TOKEN_FILE_NAME].content);
                     }
@@ -469,22 +471,18 @@
                 });
                 const data = await response.json(); 
                 
-                // 🪙 双轨记账逻辑
                 if(data.usage && data.usage.total_tokens) {
                     const tokens = data.usage.total_tokens;
                     
-                    // 轨道 A：前台显示器
                     let currentUsage = parseInt(localStorage.getItem('ds_token_usage') || '0');
                     localStorage.setItem('ds_token_usage', currentUsage + tokens);
                     updateTokenDisplay();
 
-                    // 轨道 B：后台按月汇总账本
                     let history = JSON.parse(localStorage.getItem('ds_token_history') || '{}');
-                    let monthKey = new Date().toISOString().slice(0, 7); // 生成 "2026-07"
+                    let monthKey = new Date().toISOString().slice(0, 7); 
                     history[monthKey] = (history[monthKey] || 0) + tokens;
                     localStorage.setItem('ds_token_history', JSON.stringify(history));
                     
-                    // 触发后台保存以同步包含新账单的 Gist
                     saveToCloud(true);
                 }
 
@@ -554,10 +552,44 @@
             });
         }
 
+        // 🗑️ 精准清空词库功能
+        async function clearDictionary() {
+            if(confirm('⚠ 确定要清空所有词库吗？\n\n此操作仅清空单词数据，不会影响你的 API Key、GitHub 配置和 Token 历史统计。')) {
+                vocabList = [];
+                renderDictionary();
+                await saveToCloud(true);
+                updateDashboard();
+                showToast('✅ 词库已完全清空！');
+            }
+        }
+
         async function deleteWord(id) { if(confirm('删除此词？')){ vocabList = vocabList.filter(v => v.id !== id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('设置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
-        function clearData() { if(confirm('⚠ 确定要清除所有数据吗？')) { localStorage.clear(); location.reload(); } }
-        async function importJSON() { /* 原有保持不变 */ }
+        
+        // ⚠ 恢复出厂设置（更新了文案提示）
+        function clearData() { 
+            if(confirm('⚠ 危险操作：这将清除所有词库、API Key、GitHub 配置以及 Token 历史统计！\n\n确定要恢复出厂设置吗？')) { 
+                localStorage.clear(); 
+                location.reload(); 
+            } 
+        }
+        
+        async function importJSON() {
+            try {
+                const inputData = JSON.parse(document.getElementById('jsonInput').value.trim());
+                if(Array.isArray(inputData)) {
+                    vocabList = vocabList.concat(inputData);
+                    await saveToCloud(false);
+                    document.getElementById('jsonInput').value = '';
+                    showToast('导入成功');
+                    showView('homeView');
+                } else {
+                    showToast('JSON 格式必须是数组');
+                }
+            } catch (e) {
+                showToast('JSON 解析失败，请检查格式');
+            }
+        }
 
         init();
     </script>
