@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prisma - 极简记忆</title>
+    <title>Prisma - 极简记忆 v2.0</title>
     <link rel="apple-touch-icon" href="icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -311,10 +311,10 @@
         // 听写系统增强状态 (存储西语与绑定的中文翻译)
         let dicState = { 
             sourceName: '', 
-            items: [], // [{ es: 'Yo me llamo ana.', zh: '我叫安娜。', passedFirstTry: true }]
+            items: [], 
             currentIndex: 0, 
-            mode: 'BLIND_FIRST', // 'BLIND_FIRST' | 'REPAIR_FILL' | 'BLIND_RETRY' | 'PASSED'
-            currentErrors: [], // 记录当前句修补的单词索引
+            mode: 'BLIND_FIRST', 
+            currentErrors: [], 
             todayErrorsRecord: [], 
             stats: { total: 0, perfect: 0, repaired: 0 } 
         };
@@ -619,8 +619,8 @@
 
             // 2. 将全文按照标点符号换行或行边界进行切块
             let lines = rawText
-                .replace(/(Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/gi, '') // 移出 Pista 标头
-                .replace(/([.!?。！？])\s*/g, "$1\n") // 以终结标点断行
+                .replace(/(Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/gi, '') 
+                .replace(/([.!?。！？])\s*/g, "$1\n") 
                 .split(/\r?\n/)
                 .map(l => l.trim())
                 .filter(l => l.length > 0);
@@ -631,26 +631,20 @@
 
             lines.forEach(line => {
                 const isChinese = /[\u4e00-\u9fa5]/.test(line);
-                // 排除诸如 "词汇量1000", "共74词" 等孤立噪音
                 if (isChinese && (/词汇量|共\d+词|Actividad/i.test(line))) return;
 
                 if (!isChinese) {
-                    // 如果是一行纯西班牙语
                     if (tempEs) {
-                        // 如果上一行也是西语且没找到对应的中文，直接先存入上一个
                         parsedItems.push({ es: tempEs, zh: '（暂无对应翻译）', passedFirstTry: true });
                     }
                     tempEs = line;
                 } else {
-                    // 如果是中文行
                     if (tempEs) {
-                        // 完美匹配到：上一行是西语，这一行是中文 -> 组合成一组
                         parsedItems.push({ es: tempEs, zh: line, passedFirstTry: true });
                         tempEs = null;
                     }
                 }
             });
-            // 扫尾：如果最后遗留了一句西语
             if (tempEs) parsedItems.push({ es: tempEs, zh: '（暂无对应翻译）', passedFirstTry: true });
 
             if (parsedItems.length === 0) return showToast('未识别到有效的西班牙文句子，请检查格式');
@@ -675,7 +669,6 @@
             const currentItem = dicState.items[dicState.currentIndex];
             document.getElementById('dicProgress').innerText = `进度: ${dicState.currentIndex + 1}/${dicState.stats.total}`;
             
-            // 界面区域操控
             const fullInputArea = document.getElementById('dicFullInputArea');
             const fillBlankArea = document.getElementById('dicFillBlankArea');
             const userText = document.getElementById('dicUserText');
@@ -683,7 +676,6 @@
             const feedbackBanner = document.getElementById('dicFeedbackBanner');
             const stateBadge = document.getElementById('dicStateBadge');
             
-            // 按钮状态
             document.getElementById('dicBtnSubmitFull').classList.add('hidden');
             document.getElementById('dicBtnSubmitFill').classList.add('hidden');
             document.getElementById('dicBtnNext').classList.add('hidden');
@@ -693,7 +685,6 @@
             stateBadge.classList.remove('hidden');
 
             if (dicState.mode === 'BLIND_FIRST' || dicState.mode === 'BLIND_RETRY') {
-                // 盲听首测 或 错后抹除重试
                 fullInputArea.classList.remove('hidden'); fullInputArea.classList.add('flex');
                 fillBlankArea.classList.add('hidden'); fillBlankArea.classList.remove('flex');
                 
@@ -707,7 +698,6 @@
                 setTimeout(() => userText.focus(), 50);
             } 
             else if (dicState.mode === 'REPAIR_FILL') {
-                // 错后进入“沉浸式极简填空修补模式”
                 fullInputArea.classList.add('hidden'); fullInputArea.classList.remove('flex');
                 fillBlankArea.classList.remove('hidden'); fillBlankArea.classList.add('flex');
                 
@@ -734,7 +724,6 @@
             }
         }
 
-        // 处理全句盲听提交 (首发 或 重试)
         function submitFullSentence() {
             const inputRaw = document.getElementById('dicUserText').value.trim();
             if (!inputRaw) return;
@@ -765,12 +754,10 @@
                         diffHtml += `<span class="text-slate-700 mr-1.5">${targetWords[i]}</span> `;
                         inputIdx++;
                     } else if (twNoAccent === iwNoAccent) {
-                        // 标点或音调错误
                         errorIndices.push(i);
                         diffHtml += `<span class="text-amber-600 font-medium underline decoration-wavy decoration-amber-400 mr-1.5" title="音调错误">${targetWords[i]}</span> `;
                         inputIdx++;
                     } else {
-                        // 彻底拼错
                         errorIndices.push(i);
                         diffHtml += `<span class="text-rose-600 font-medium underline decoration-wavy decoration-rose-300 mr-1.5" title="你输了: ${iw}">${targetWords[i]}</span> `;
                         inputIdx++;
@@ -779,11 +766,9 @@
             }
 
             if (errorIndices.length > 0) {
-                // 听写有误！记录错误词，进入模式 B（填空修补）
                 currentItem.passedFirstTry = false;
                 dicState.currentErrors = errorIndices;
                 
-                // 将错词收集进今天的报告
                 errorIndices.forEach(idx => {
                     let errWord = cleanPunc(targetWords[idx]);
                     if (!dicState.todayErrorsRecord.includes(errWord)) {
@@ -795,7 +780,6 @@
                 dicState.mode = 'REPAIR_FILL';
                 renderDictationItem();
             } else {
-                // 完美通过！
                 if (currentItem.passedFirstTry) dicState.stats.perfect++;
                 else dicState.stats.repaired++;
                 
@@ -804,7 +788,6 @@
             }
         }
 
-        // 构建原句极简填空 UI (保留句法语境)
         function buildFillBlankUI() {
             const currentItem = dicState.items[dicState.currentIndex];
             const targetWords = currentItem.es.split(/\s+/);
@@ -818,17 +801,14 @@
                 const isError = dicState.currentErrors.includes(idx);
 
                 if (!isError || !cleanWord) {
-                    // 正确的词，作为平静的语境展示
                     const span = document.createElement('span');
                     span.className = "text-slate-700 font-normal px-1";
                     span.innerText = word;
                     container.appendChild(span);
                 } else {
-                    // 错词 -> 转换为一个极简带提示的输入空
                     const wrapper = document.createElement('span');
                     wrapper.className = "inline-flex flex-col items-center justify-center mx-1 relative group";
                     
-                    // 极其克制微小的正确提示字
                     const hint = document.createElement('span');
                     hint.className = "text-[11px] font-mono text-teal-600 absolute -top-4 tracking-wider select-none";
                     hint.innerText = word;
@@ -841,7 +821,6 @@
                     input.dataset.clean = cleanWord.toLowerCase();
                     input.placeholder = "•".repeat(cleanWord.length);
                     
-                    // 监听键盘按键：Enter提交，Tab跳空
                     input.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter') {
                             e.preventDefault();
@@ -849,7 +828,6 @@
                         }
                     });
 
-                    // 实时反馈：输入正确时变绿色
                     input.addEventListener('input', (e) => {
                         if (cleanPunc(e.target.value).toLowerCase() === input.dataset.clean) {
                             input.classList.add('is-correct');
@@ -869,7 +847,6 @@
             if (firstInputEl) setTimeout(() => firstInputEl.focus(), 50);
         }
 
-        // 提交修补填空校验
         function submitFillBlank() {
             const inputs = document.querySelectorAll('#dicSentenceFillContainer input');
             let allPassed = true;
@@ -881,7 +858,7 @@
                     input.classList.add('is-correct');
                 } else {
                     allPassed = false;
-                    input.style.borderBottomColor = '#f43f5e'; // 短暂微红提示错误空
+                    input.style.borderBottomColor = '#f43f5e';
                     input.classList.add('bg-rose-50');
                     setTimeout(() => {
                         input.style.borderBottomColor = '#94a3b8';
@@ -891,10 +868,9 @@
             });
 
             if (allPassed) {
-                // 修补全对！清空并打入 模式 C (盲听重验)
                 showToast('错词校准完成！请再次听写本句进行彻底巩固');
                 dicState.mode = 'BLIND_RETRY';
-                setTimeout(() => renderDictationItem(), 300), 
+                setTimeout(() => renderDictationItem(), 300); // <-- 语法修复：已替换为分号
             } else {
                 showToast('请检查未匹配的单词（请观察上方提示字）');
             }
