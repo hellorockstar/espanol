@@ -25,11 +25,34 @@
         .btn-primary:hover { background-color: #334155; }
         .btn-secondary { background-color: white; border: 1px solid #cbd5e1; color: #334155; transition: background-color 0.2s; }
         .btn-secondary:hover { background-color: #f8fafc; }
+        
+        /* 听写错题填空专用极简样稿 */
+        .fill-blank-input {
+            border: none;
+            border-bottom: 1.5px solid #94a3b8;
+            background: transparent;
+            text-align: center;
+            font-size: 1rem;
+            color: #0f172a;
+            transition: all 0.2s ease;
+            padding: 0 4px;
+            margin: 0 2px;
+            border-radius: 0;
+        }
+        .fill-blank-input:focus {
+            outline: none;
+            border-bottom-color: #0f172a;
+            background-color: #f1f5f9;
+        }
+        .fill-blank-input.is-correct {
+            border-bottom-color: #0d9488;
+            color: #0d9488;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center p-4">
 
-    <!-- 顶部导航 -->
+    <!-- 顶部导航 (调整顺序：听写·复习·默写 | 竖线 | 词库·设置·导入) -->
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition" onclick="showView('homeView')">Prisma</h1>
@@ -37,13 +60,19 @@
                 Token: 0.000 M
             </span>
         </div>
-        <nav class="flex space-x-6 text-sm font-medium text-slate-500">
-            <button onclick="showView('reviewView', true)" class="hover:text-slate-900 transition">复习</button>
+        <nav class="flex items-center space-x-6 text-sm font-medium text-slate-500">
+            <!-- 核心功能组 -->
             <button onclick="showView('dictationView')" class="hover:text-slate-900 transition">听写</button>
+            <button onclick="showView('reviewView', true)" class="hover:text-slate-900 transition">复习</button>
             <button onclick="showView('spellingView')" class="hover:text-slate-900 transition">默写</button>
+            
+            <!-- 极简竖线分割 -->
+            <div class="h-4 w-[1px] bg-slate-200 my-auto"></div>
+            
+            <!-- 底层管理组 -->
             <button onclick="showView('dictionaryView')" class="hover:text-slate-900 transition">词库</button>
-            <button onclick="showView('importView')" class="hover:text-slate-900 transition">导入</button>
             <button onclick="showView('settingsView')" class="hover:text-slate-900 transition">设置</button>
+            <button onclick="showView('importView')" class="hover:text-slate-900 transition">导入</button>
         </nav>
     </header>
 
@@ -92,7 +121,7 @@
         <button onclick="showView('homeView')" class="mt-8 text-slate-400 text-xs text-center w-full hover:text-slate-600">结束复习</button>
     </main>
 
-    <!-- 视图：默写训练舱 (Spelling Gym) -->
+    <!-- 视图：默写训练舱 -->
     <main id="spellingView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="spellingSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm text-center">
             <h2 class="text-lg font-medium text-slate-800 mb-2">默写训练舱</h2>
@@ -135,7 +164,7 @@
         </div>
     </main>
 
-    <!-- 视图：听写 (Dictation) -->
+    <!-- 视图：听写 (演化升级：闭环修补 + 双语提取 + 极简填空) -->
     <main id="dictationView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="dicSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full flex flex-col h-full shadow-sm">
             <h2 class="text-lg font-medium text-slate-800 mb-6">听写任务</h2>
@@ -143,42 +172,62 @@
                 <span class="inline-flex items-center px-4 text-sm text-slate-500 bg-slate-50 border border-r-0 border-slate-300 rounded-l-md">
                     段落
                 </span>
-                <input type="text" id="dicSource" class="rounded-none rounded-r-md border border-slate-300 w-full text-sm p-3 outline-none" placeholder="例如: 1.1">
+                <input type="text" id="dicSource" class="rounded-none rounded-r-md border border-slate-300 w-full text-sm p-3 outline-none" placeholder="粘贴文本后自动提取，例如: Pista02">
             </div>
-            <textarea id="dicInput" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-sm mb-6 outline-none" placeholder="粘贴课文文本..." style="min-height: 150px;"></textarea>
-            <button onclick="prepareDictation()" class="w-full btn-primary py-3 rounded-md font-medium text-sm">开始比对</button>
+            <textarea id="dicInput" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-sm mb-6 outline-none" placeholder="直接粘贴带中文翻译、Pista标题的混合课文，系统将自动清洗并组装..." style="min-height: 160px;"></textarea>
+            <button onclick="prepareDictation()" class="w-full btn-primary py-3 rounded-md font-medium text-sm">解析并开始</button>
         </div>
 
         <div id="dicActive" class="w-full flex-col hidden h-full">
             <div class="flex justify-between items-center mb-6">
                 <span class="text-xs text-slate-500" id="dicProgress">进度: 0/0</span>
-                <button onclick="endDictation()" class="text-xs text-slate-500 hover:text-slate-800">结束总结</button>
+                <span class="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-mono tracking-wider hidden" id="dicStateBadge">盲听</span>
+                <button onclick="endDictation()" class="text-xs text-slate-400 hover:text-slate-800">结束总结</button>
             </div>
+            
             <div class="bg-white border border-slate-200 rounded-xl p-8 w-full flex-1 flex flex-col shadow-sm">
-                <textarea id="dicUserText" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-lg mb-6 outline-none" placeholder="输入听写内容..."></textarea>
-                
-                <div id="dicResultArea" class="hidden flex-col flex-1">
-                    <div id="dicErrorBanner" class="mb-6 text-sm font-medium p-3 rounded-md text-center"></div>
-                    <div class="text-xs text-slate-400 mb-2">对比结果:</div>
-                    <div id="dicUserDiff" class="p-4 bg-slate-50 rounded-md mb-6 text-lg border border-slate-100 min-h-[80px]"></div>
-                    <div class="text-xs text-slate-400 mb-2">标准答案 (点击查词):</div>
-                    <div id="dicCorrectSent" class="p-4 bg-slate-50 rounded-md mb-6 text-lg border border-slate-100 min-h-[80px]"></div>
+                <!-- 中文提示 (常驻顶部或在特定模式显现) -->
+                <div id="dicZhPrompt" class="text-sm font-medium text-slate-500 mb-6 pb-4 border-b border-slate-100 text-center min-h-[1.5rem] flex items-center justify-center">
+                    -
                 </div>
 
+                <!-- 模式 A / 模式 C：全句打字输入框 -->
+                <div id="dicFullInputArea" class="flex-col flex-1 flex">
+                    <textarea id="dicUserText" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-lg mb-6 outline-none transition focus:border-slate-500" placeholder="盲听并输入完整西班牙语句子..."></textarea>
+                </div>
+                
+                <!-- 模式 B：沉浸式极简填空修补台 -->
+                <div id="dicFillBlankArea" class="hidden flex-col flex-1 mb-6">
+                    <div class="text-xs text-slate-400 mb-3 flex justify-between items-center">
+                        <span>差异诊断与错词修补</span>
+                        <span class="text-[11px] text-slate-400">看着上方小字正确答案输入，按 <kbd class="px-1 bg-slate-100 border border-slate-200 rounded">Tab</kbd> 跳格</span>
+                    </div>
+                    
+                    <!-- 原始错误展示 (带波浪线标记) -->
+                    <div id="dicErrorDiffDisplay" class="p-4 bg-slate-50 rounded-md mb-6 text-base border border-slate-100 leading-relaxed text-slate-600"></div>
+                    
+                    <!-- 动态生成的填空句子 -->
+                    <div id="dicSentenceFillContainer" class="p-6 bg-white border border-slate-200 rounded-lg text-lg leading-loose text-center shadow-inner my-auto flex flex-wrap items-center justify-center gap-y-3"></div>
+                </div>
+
+                <!-- 校验与反馈 Banner -->
+                <div id="dicFeedbackBanner" class="hidden mb-6 text-sm font-medium p-3 rounded-md text-center"></div>
+
+                <!-- 操作按钮组 -->
                 <div class="flex space-x-4 mt-auto">
-                    <button id="dicBtnSubmit" onclick="checkDictationSentence()" class="w-full btn-primary py-3 rounded-md font-medium text-sm">提交对比</button>
-                    <button id="dicBtnRetry" onclick="retryDictationSentence()" class="w-1/2 btn-secondary py-3 rounded-md font-medium text-sm hidden">重练此句</button>
-                    <button id="dicBtnNext" onclick="nextDictationSentence()" class="w-1/2 btn-primary py-3 rounded-md font-medium text-sm hidden">下一句</button>
+                    <button id="dicBtnSubmitFull" onclick="submitFullSentence()" class="w-full btn-primary py-3 rounded-md font-medium text-sm">提交比对</button>
+                    <button id="dicBtnSubmitFill" onclick="submitFillBlank()" class="w-full btn-primary py-3 rounded-md font-medium text-sm hidden">验证修补并进入盲敲</button>
+                    <button id="dicBtnNext" onclick="nextDictationSentence()" class="w-full btn-primary py-3 rounded-md font-medium text-sm hidden">下一句</button>
                 </div>
             </div>
         </div>
 
         <div id="dicSummary" class="bg-white border border-slate-200 rounded-xl p-8 w-full hidden flex-col h-full shadow-sm">
-            <h2 class="text-lg font-medium text-slate-800 mb-6 text-center">听写总结</h2>
+            <h2 class="text-lg font-medium text-slate-800 mb-6 text-center">听写训练报告</h2>
             <div class="bg-slate-50 p-4 rounded-md mb-6 text-center border border-slate-100">
-                <p class="text-sm text-slate-800" id="dicStats">共 0 句 | 正确 0 | 错误 0</p>
+                <p class="text-sm text-slate-800" id="dicStats">共 0 句 | 完美直通 0 | 陷入修补 0</p>
             </div>
-            <button onclick="exportDictationPrompt()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-4">复制总结数据</button>
+            <button onclick="exportDictationPrompt()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-4">复制训练总结与错词记录</button>
             <button onclick="showView('homeView')" class="w-full text-sm text-slate-500 py-2 hover:text-slate-800">返回首页</button>
         </div>
     </main>
@@ -259,7 +308,17 @@
         let vocabList = []; let dueQueue = []; let currentCardIndex = 0; 
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json";
         
-        let dicState = { sourceName: '', sentences: [], currentIndex: 0, todayErrors: [], todayNewWords: [], stats: { total: 0, correct: 0, error: 0 } };
+        // 听写系统增强状态 (存储西语与绑定的中文翻译)
+        let dicState = { 
+            sourceName: '', 
+            items: [], // [{ es: 'Yo me llamo ana.', zh: '我叫安娜。', passedFirstTry: true }]
+            currentIndex: 0, 
+            mode: 'BLIND_FIRST', // 'BLIND_FIRST' | 'REPAIR_FILL' | 'BLIND_RETRY' | 'PASSED'
+            currentErrors: [], // 记录当前句修补的单词索引
+            todayErrorsRecord: [], 
+            stats: { total: 0, perfect: 0, repaired: 0 } 
+        };
+
         let currentAiWordObj = null;
 
         // 默写舱状态 (Cover-and-Write Logic)
@@ -321,13 +380,11 @@
             if (localData) {
                 vocabList = JSON.parse(localData);
                 vocabList.forEach(w => {
-                    // 数据兼容：补全阅读释义
                     if (w.meaning && !w.meaning_en && !w.meaning_zh) {
                         if (/[\u4e00-\u9fa5]/.test(w.meaning)) { w.meaning_zh = w.meaning; w.meaning_en = ""; } 
                         else { w.meaning_en = w.meaning; w.meaning_zh = ""; }
                         delete w.meaning;
                     }
-                    // 数据兼容：补全独立默写算法所需字段
                     if (w.spellReviewCount === undefined) {
                         w.spellReviewCount = 0; w.spellMistakeCount = 0; w.spellStreak = 0; 
                         w.spellInterval = 0; w.spellNextReview = Date.now();
@@ -417,7 +474,7 @@
             await saveToCloud(true); currentCardIndex++; renderCard();
         }
 
-        // ================= 默写引擎 (Spelling Gym & Cover-and-Write) =================
+        // ================= 默写引擎 (Spelling Gym) =================
         function updateSpellingDashboard() {
             document.getElementById('spellingSetup').classList.remove('hidden');
             document.getElementById('spellingActive').classList.add('hidden');
@@ -449,7 +506,6 @@
 
         function renderSpellingItem() {
             if (spState.currentIndex >= spState.queue.length) { endSpelling(); return; }
-            
             const currentItem = spState.queue[spState.currentIndex];
             const word = currentItem.wordObj;
             
@@ -462,8 +518,7 @@
             const answerArea = document.getElementById('spellAnswerArea');
             const labelEl = document.getElementById('spellStateLabel');
             
-            inputEl.value = '';
-            inputEl.disabled = false;
+            inputEl.value = ''; inputEl.disabled = false;
             inputEl.className = "w-full border rounded-md p-4 text-center text-xl outline-none transition";
             
             if (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER') {
@@ -478,179 +533,406 @@
                 inputEl.classList.add('border-rose-300', 'text-rose-800', 'bg-rose-50');
                 labelEl.innerText = "错误 · 请对照抄写";
             }
-            
             setTimeout(() => inputEl.focus(), 50);
         }
 
         function checkSpelling() {
             const inputEl = document.getElementById('spellInput');
-            const inputVal = inputEl.value.trim();
-            if(!inputVal) return;
-            
+            const inputVal = inputEl.value.trim(); if(!inputVal) return;
             const currentItem = spState.queue[spState.currentIndex];
-            const wordObj = currentItem.wordObj;
-            const target = wordObj.word;
-            
+            const wordObj = currentItem.wordObj; const target = wordObj.word;
             const isCorrect = inputVal.toLowerCase() === target.toLowerCase();
             
             if (spState.step === 'INITIAL_BLIND') {
-                if (isCorrect) {
-                    currentItem.trace.push(`[初始盲打]: ${inputVal} (正确)`);
-                    finalizeSpellingWord(currentItem, true);
-                } else {
-                    currentItem.trace.push(`[初始盲打]: ${inputVal} (错误)`);
-                    spState.step = 'COPY_WITH_ANSWER';
-                    renderSpellingItem();
-                }
+                if (isCorrect) { currentItem.trace.push(`[初始盲打]: ${inputVal} (正确)`); finalizeSpellingWord(currentItem, true); } 
+                else { currentItem.trace.push(`[初始盲打]: ${inputVal} (错误)`); spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); }
             } 
             else if (spState.step === 'COPY_WITH_ANSWER') {
-                if (isCorrect) {
-                    currentItem.trace.push(`[对照抄写]: ${inputVal} (正确)`);
-                    spState.step = 'BLIND_WITHOUT_ANSWER';
-                    inputEl.classList.remove('bg-rose-50');
-                    renderSpellingItem();
-                } else {
-                    currentItem.trace.push(`[对照抄写]: ${inputVal} (错误)`);
-                    inputEl.value = ''; // 强迫重打
-                }
+                if (isCorrect) { currentItem.trace.push(`[对照抄写]: ${inputVal} (正确)`); spState.step = 'BLIND_WITHOUT_ANSWER'; inputEl.classList.remove('bg-rose-50'); renderSpellingItem(); } 
+                else { currentItem.trace.push(`[对照抄写]: ${inputVal} (错误)`); inputEl.value = ''; }
             }
             else if (spState.step === 'BLIND_WITHOUT_ANSWER') {
                 if (isCorrect) {
                     currentItem.trace.push(`[抹除盲打]: ${inputVal} (正确)`);
-                    
                     if (!currentItem.isInterleaved) {
-                        // 插入穿插队列 (后面第 2 个位置)
                         const insertPos = Math.min(spState.currentIndex + 3, spState.queue.length);
                         spState.queue.splice(insertPos, 0, { wordObj: wordObj, isInterleaved: true, trace: currentItem.trace });
-                        spState.queue.splice(spState.currentIndex, 1); // 移除当前位置
-                        // 不增加 index，直接 render
-                        spState.step = 'INITIAL_BLIND';
-                        renderSpellingItem();
-                    } else {
-                        currentItem.trace.push(`[穿插验收]: ${inputVal} (正确)`);
-                        finalizeSpellingWord(currentItem, false);
-                    }
-                } else {
-                    currentItem.trace.push(`[抹除盲打]: ${inputVal} (错误) -> 退回抄写`);
-                    spState.step = 'COPY_WITH_ANSWER';
-                    renderSpellingItem();
-                }
+                        spState.queue.splice(spState.currentIndex, 1);
+                        spState.step = 'INITIAL_BLIND'; renderSpellingItem();
+                    } else { currentItem.trace.push(`[穿插验收]: ${inputVal} (正确)`); finalizeSpellingWord(currentItem, false); }
+                } else { currentItem.trace.push(`[抹除盲打]: ${inputVal} (错误) -> 退回抄写`); spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); }
             }
         }
 
         async function finalizeSpellingWord(item, isPerfect) {
-            const w = item.wordObj;
-            w.spellReviewCount++;
-            
+            const w = item.wordObj; w.spellReviewCount++;
             if (isPerfect) {
-                w.spellStreak++;
-                spState.stats.passed++;
-                // 毕业逻辑：连胜3次以上，复习间隔拉长
+                w.spellStreak++; spState.stats.passed++;
                 if(w.spellStreak >= 3) w.spellInterval = w.spellInterval === 0 ? 7 : w.spellInterval * 2;
                 else w.spellInterval = w.spellInterval === 0 ? 1 : 3;
             } else {
-                w.spellStreak = 0;
-                w.spellMistakeCount++;
-                w.spellInterval = 0;
-                spState.stats.struggled++;
+                w.spellStreak = 0; w.spellMistakeCount++; w.spellInterval = 0; spState.stats.struggled++;
             }
-            
             w.spellInterval = Math.round(w.spellInterval);
             w.spellNextReview = Date.now() + w.spellInterval * 24 * 60 * 60 * 1000;
-            
             spState.completedLogs.push({ target: w.word, en: w.meaning_en, zh: w.meaning_zh, streak: w.spellStreak, trace: item.trace });
-            
-            spState.currentIndex++;
-            spState.step = 'INITIAL_BLIND';
-            
-            // 异步后台保存
-            saveToCloud(true);
-            renderSpellingItem();
+            spState.currentIndex++; spState.step = 'INITIAL_BLIND';
+            saveToCloud(true); renderSpellingItem();
         }
 
         function endSpelling() {
-            document.getElementById('spellingActive').classList.add('hidden');
-            document.getElementById('spellingActive').classList.remove('flex');
-            document.getElementById('spellingSummary').classList.remove('hidden');
-            document.getElementById('spellingSummary').classList.add('flex');
+            document.getElementById('spellingActive').classList.add('hidden'); document.getElementById('spellingActive').classList.remove('flex');
+            document.getElementById('spellingSummary').classList.remove('hidden'); document.getElementById('spellingSummary').classList.add('flex');
             document.getElementById('spellStats').innerText = `共 ${spState.stats.total} 词 | 一次通过 ${spState.stats.passed} | 纠缠 ${spState.stats.struggled}`;
         }
 
         function exportSpellingPrompt() {
             const today = new Date().toISOString().split('T')[0];
             let exportText = `[Spelling-Recall-Report]\n训练日期: ${today}\n默写总数: ${spState.stats.total} 词 | 一次通过: ${spState.stats.passed} 词 | 陷入纠缠: ${spState.stats.struggled} 词\n\n【交互轨迹记录】\n`;
-            
             spState.completedLogs.forEach((log, idx) => {
                 exportText += `${idx + 1}. 目标词: ${log.target} (EN: ${log.en || '-'} / ZH: ${log.zh || '-'})\n`;
-                exportText += `   - 历史连胜: ${log.streak}\n`;
-                exportText += `   - 轨迹: \n`;
-                log.trace.forEach(t => exportText += `     ${t}\n`);
-                exportText += `\n`;
+                exportText += `   - 历史连胜: ${log.streak}\n   - 轨迹: \n`;
+                log.trace.forEach(t => exportText += `     ${t}\n`); exportText += `\n`;
             });
-            
             exportText += `【AI 辅助分析请求】\n请作为资深语言教师，分析我在上述盲打阶段暴露的拼写薄弱点。结合错误规律，提供极简的针对性指导。`;
-            
             navigator.clipboard.writeText(exportText).then(() => showToast('分析数据已复制')).catch(() => showToast('复制失败'));
         }
 
-        // ================= 听写引擎 =================
-        function resetDictationUI() { document.getElementById('dicSetup').classList.remove('hidden'); document.getElementById('dicActive').classList.add('hidden'); document.getElementById('dicSummary').classList.add('hidden'); }
+        // ================= 听写引擎 2.0 (智能清洗 & 闭环填空修补) =================
+        function resetDictationUI() { 
+            document.getElementById('dicSetup').classList.remove('hidden'); 
+            document.getElementById('dicActive').classList.add('hidden'); 
+            document.getElementById('dicSummary').classList.add('hidden'); 
+        }
+
         function prepareDictation() {
-            const sourceName = document.getElementById('dicSource').value.trim() || '未命名段落';
-            const rawText = document.getElementById('dicInput').value.trim(); if (!rawText) return;
-            let sentences = rawText.match(/[^.!?]+[.!?]+/g) || [rawText]; sentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
-            dicState = { sourceName, sentences, currentIndex: 0, todayErrors: [], todayNewWords: [], stats: { total: sentences.length, correct: 0, error: 0 } };
-            document.getElementById('dicSetup').classList.add('hidden'); document.getElementById('dicActive').classList.remove('hidden'); document.getElementById('dicActive').classList.add('flex'); renderDictationActive();
+            const rawText = document.getElementById('dicInput').value.trim(); 
+            if (!rawText) return showToast('请输入或粘贴文本内容');
+
+            // 1. 智能抓取 Pista / 轨道 编号自动填入段落
+            let sourceName = document.getElementById('dicSource').value.trim();
+            const pistaMatch = rawText.match(/(?:Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/i);
+            if (pistaMatch && !sourceName) {
+                sourceName = pistaMatch[0].replace(/\s+/g, ' ');
+                document.getElementById('dicSource').value = sourceName;
+            }
+
+            // 2. 将全文按照标点符号换行或行边界进行切块
+            let lines = rawText
+                .replace(/(Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/gi, '') // 移出 Pista 标头
+                .replace(/([.!?。！？])\s*/g, "$1\n") // 以终结标点断行
+                .split(/\r?\n/)
+                .map(l => l.trim())
+                .filter(l => l.length > 0);
+
+            // 3. 语言属性分类 & “中西双语交替绑定”算法
+            let parsedItems = [];
+            let tempEs = null;
+
+            lines.forEach(line => {
+                const isChinese = /[\u4e00-\u9fa5]/.test(line);
+                // 排除诸如 "词汇量1000", "共74词" 等孤立噪音
+                if (isChinese && (/词汇量|共\d+词|Actividad/i.test(line))) return;
+
+                if (!isChinese) {
+                    // 如果是一行纯西班牙语
+                    if (tempEs) {
+                        // 如果上一行也是西语且没找到对应的中文，直接先存入上一个
+                        parsedItems.push({ es: tempEs, zh: '（暂无对应翻译）', passedFirstTry: true });
+                    }
+                    tempEs = line;
+                } else {
+                    // 如果是中文行
+                    if (tempEs) {
+                        // 完美匹配到：上一行是西语，这一行是中文 -> 组合成一组
+                        parsedItems.push({ es: tempEs, zh: line, passedFirstTry: true });
+                        tempEs = null;
+                    }
+                }
+            });
+            // 扫尾：如果最后遗留了一句西语
+            if (tempEs) parsedItems.push({ es: tempEs, zh: '（暂无对应翻译）', passedFirstTry: true });
+
+            if (parsedItems.length === 0) return showToast('未识别到有效的西班牙文句子，请检查格式');
+
+            dicState = {
+                sourceName: sourceName || '常规段落',
+                items: parsedItems,
+                currentIndex: 0,
+                mode: 'BLIND_FIRST',
+                currentErrors: [],
+                todayErrorsRecord: [],
+                stats: { total: parsedItems.length, perfect: 0, repaired: 0 }
+            };
+
+            document.getElementById('dicSetup').classList.add('hidden');
+            document.getElementById('dicActive').classList.remove('hidden');
+            document.getElementById('dicActive').classList.add('flex');
+            renderDictationItem();
         }
-        function renderDictationActive() {
+
+        function renderDictationItem() {
+            const currentItem = dicState.items[dicState.currentIndex];
             document.getElementById('dicProgress').innerText = `进度: ${dicState.currentIndex + 1}/${dicState.stats.total}`;
-            document.getElementById('dicUserText').value = ''; document.getElementById('dicUserText').disabled = false;
-            document.getElementById('dicResultArea').classList.add('hidden'); document.getElementById('dicResultArea').classList.remove('flex');
-            document.getElementById('dicBtnSubmit').classList.remove('hidden'); document.getElementById('dicBtnRetry').classList.add('hidden'); document.getElementById('dicBtnNext').classList.add('hidden');
-            setTimeout(() => document.getElementById('dicUserText').focus(), 50);
+            
+            // 界面区域操控
+            const fullInputArea = document.getElementById('dicFullInputArea');
+            const fillBlankArea = document.getElementById('dicFillBlankArea');
+            const userText = document.getElementById('dicUserText');
+            const zhPrompt = document.getElementById('dicZhPrompt');
+            const feedbackBanner = document.getElementById('dicFeedbackBanner');
+            const stateBadge = document.getElementById('dicStateBadge');
+            
+            // 按钮状态
+            document.getElementById('dicBtnSubmitFull').classList.add('hidden');
+            document.getElementById('dicBtnSubmitFill').classList.add('hidden');
+            document.getElementById('dicBtnNext').classList.add('hidden');
+            feedbackBanner.classList.add('hidden');
+
+            zhPrompt.innerText = currentItem.zh;
+            stateBadge.classList.remove('hidden');
+
+            if (dicState.mode === 'BLIND_FIRST' || dicState.mode === 'BLIND_RETRY') {
+                // 盲听首测 或 错后抹除重试
+                fullInputArea.classList.remove('hidden'); fullInputArea.classList.add('flex');
+                fillBlankArea.classList.add('hidden'); fillBlankArea.classList.remove('flex');
+                
+                userText.value = ''; userText.disabled = false;
+                userText.placeholder = dicState.mode === 'BLIND_FIRST' ? "盲听音频并输入完整西班牙语句子..." : "已修补完毕！请趁热打铁盲敲整句验收...";
+                
+                stateBadge.innerText = dicState.mode === 'BLIND_FIRST' ? '盲听首试' : '抹除验收';
+                stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono tracking-wider bg-slate-200 text-slate-600";
+                
+                document.getElementById('dicBtnSubmitFull').classList.remove('hidden');
+                setTimeout(() => userText.focus(), 50);
+            } 
+            else if (dicState.mode === 'REPAIR_FILL') {
+                // 错后进入“沉浸式极简填空修补模式”
+                fullInputArea.classList.add('hidden'); fullInputArea.classList.remove('flex');
+                fillBlankArea.classList.remove('hidden'); fillBlankArea.classList.add('flex');
+                
+                stateBadge.innerText = '局部修补';
+                stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono tracking-wider bg-amber-100 text-amber-800";
+                
+                buildFillBlankUI();
+                document.getElementById('dicBtnSubmitFill').classList.remove('hidden');
+            }
+            else if (dicState.mode === 'PASSED') {
+                fullInputArea.classList.remove('hidden'); fullInputArea.classList.add('flex');
+                fillBlankArea.classList.add('hidden');
+                userText.disabled = true;
+                userText.value = currentItem.es;
+                
+                stateBadge.innerText = '通过';
+                stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono tracking-wider bg-teal-100 text-teal-800";
+                
+                feedbackBanner.className = "mb-6 text-sm font-medium p-3 rounded-md text-center bg-teal-50 text-teal-700 block";
+                feedbackBanner.innerText = currentItem.passedFirstTry ? "完美！一耳听写直通" : "修补通过！巩固了肌肉记忆";
+                feedbackBanner.classList.remove('hidden');
+                
+                document.getElementById('dicBtnNext').classList.remove('hidden');
+            }
         }
-        function checkDictationSentence() {
-            const inputRaw = document.getElementById('dicUserText').value.trim(); if(!inputRaw) return;
-            const targetRaw = dicState.sentences[dicState.currentIndex]; const targetWords = targetRaw.split(/\s+/); const inputWords = inputRaw.split(/\s+/);
-            const cleanTarget = targetWords.map(cleanPunc).filter(w => w); const cleanInput = inputWords.map(cleanPunc).filter(w => w);
-            let errors = []; let inputIdx = 0; let diffHtml = ''; let sentenceHasError = false;
+
+        // 处理全句盲听提交 (首发 或 重试)
+        function submitFullSentence() {
+            const inputRaw = document.getElementById('dicUserText').value.trim();
+            if (!inputRaw) return;
+
+            const currentItem = dicState.items[dicState.currentIndex];
+            const targetWords = currentItem.es.split(/\s+/);
+            const inputWords = inputRaw.split(/\s+/);
+            
+            const cleanTarget = targetWords.map(cleanPunc).filter(w => w);
+            const cleanInput = inputWords.map(cleanPunc).filter(w => w);
+
+            let errorIndices = [];
+            let diffHtml = '';
+            let inputIdx = 0;
 
             for (let i = 0; i < cleanTarget.length; i++) {
-                let tw = cleanTarget[i]; let iw = inputIdx < cleanInput.length ? cleanInput[inputIdx] : null;
-                if (!iw) { errors.push({ target: tw, input: '(漏写)' }); diffHtml += `<span class="text-rose-700 italic mr-1">[漏: ${tw}]</span> `; sentenceHasError = true; } 
-                else {
-                    let twNoAccent = removeAccent(tw).toLowerCase(); let iwNoAccent = removeAccent(iw).toLowerCase();
-                    if (tw.toLowerCase() === iw.toLowerCase()) { diffHtml += `<span class="text-teal-700 mr-1">${inputWords[inputIdx]}</span> `; inputIdx++; } 
-                    else if (twNoAccent === iwNoAccent) { errors.push({ target: tw, input: iw }); diffHtml += `<span class="text-rose-600 font-medium mr-1">${inputWords[inputIdx]}</span> `; sentenceHasError = true; inputIdx++; } 
-                    else { errors.push({ target: tw, input: iw }); diffHtml += `<span class="text-rose-700 underline mr-1">${inputWords[inputIdx]}</span> `; sentenceHasError = true; inputIdx++; }
+                let tw = cleanTarget[i];
+                let iw = inputIdx < cleanInput.length ? cleanInput[inputIdx] : null;
+                
+                if (!iw) {
+                    errorIndices.push(i);
+                    diffHtml += `<span class="text-rose-600 font-medium underline decoration-wavy decoration-rose-300 mr-1.5">${targetWords[i]}</span> `;
+                } else {
+                    let twNoAccent = removeAccent(tw).toLowerCase();
+                    let iwNoAccent = removeAccent(iw).toLowerCase();
+                    
+                    if (tw.toLowerCase() === iw.toLowerCase()) {
+                        diffHtml += `<span class="text-slate-700 mr-1.5">${targetWords[i]}</span> `;
+                        inputIdx++;
+                    } else if (twNoAccent === iwNoAccent) {
+                        // 标点或音调错误
+                        errorIndices.push(i);
+                        diffHtml += `<span class="text-amber-600 font-medium underline decoration-wavy decoration-amber-400 mr-1.5" title="音调错误">${targetWords[i]}</span> `;
+                        inputIdx++;
+                    } else {
+                        // 彻底拼错
+                        errorIndices.push(i);
+                        diffHtml += `<span class="text-rose-600 font-medium underline decoration-wavy decoration-rose-300 mr-1.5" title="你输了: ${iw}">${targetWords[i]}</span> `;
+                        inputIdx++;
+                    }
                 }
             }
-            if(sentenceHasError) {
-                dicState.stats.error++; dicState.todayErrors.push(...errors);
-                document.getElementById('dicErrorBanner').className = "mb-6 text-sm font-medium p-3 rounded-md text-center bg-rose-50 text-rose-700"; document.getElementById('dicErrorBanner').innerText = "有错误，请比对";
+
+            if (errorIndices.length > 0) {
+                // 听写有误！记录错误词，进入模式 B（填空修补）
+                currentItem.passedFirstTry = false;
+                dicState.currentErrors = errorIndices;
+                
+                // 将错词收集进今天的报告
+                errorIndices.forEach(idx => {
+                    let errWord = cleanPunc(targetWords[idx]);
+                    if (!dicState.todayErrorsRecord.includes(errWord)) {
+                        dicState.todayErrorsRecord.push(errWord);
+                    }
+                });
+
+                document.getElementById('dicErrorDiffDisplay').innerHTML = `<strong>诊断发现 ${errorIndices.length} 处出入：</strong><br/>` + diffHtml;
+                dicState.mode = 'REPAIR_FILL';
+                renderDictationItem();
             } else {
-                dicState.stats.correct++;
-                document.getElementById('dicErrorBanner').className = "mb-6 text-sm font-medium p-3 rounded-md text-center bg-teal-50 text-teal-700"; document.getElementById('dicErrorBanner').innerText = "完美通过";
-                diffHtml = `<span class="text-teal-700">${inputRaw}</span>`;
+                // 完美通过！
+                if (currentItem.passedFirstTry) dicState.stats.perfect++;
+                else dicState.stats.repaired++;
+                
+                dicState.mode = 'PASSED';
+                renderDictationItem();
             }
-            document.getElementById('dicUserText').disabled = true; document.getElementById('dicUserDiff').innerHTML = diffHtml;
-            document.getElementById('dicCorrectSent').innerHTML = targetWords.map(word => { let cw = cleanPunc(word); return cw ? `<span class="clickable-word" onclick="triggerAiDict('${cw}', '${targetRaw.replace(/'/g, "\\'")}')">${word}</span>` : word; }).join(' ');
-            
-            document.getElementById('dicResultArea').classList.remove('hidden'); document.getElementById('dicResultArea').classList.add('flex');
-            document.getElementById('dicBtnSubmit').classList.add('hidden'); if(sentenceHasError) document.getElementById('dicBtnRetry').classList.remove('hidden');
-            document.getElementById('dicBtnNext').classList.remove('hidden');
         }
-        function retryDictationSentence() { dicState.stats.error--; dicState.todayErrors = dicState.todayErrors.filter(e => !dicState.sentences[dicState.currentIndex].includes(e.target)); renderDictationActive(); }
-        function nextDictationSentence() { if (dicState.currentIndex < dicState.stats.total - 1) { dicState.currentIndex++; renderDictationActive(); } else endDictation(); }
+
+        // 构建原句极简填空 UI (保留句法语境)
+        function buildFillBlankUI() {
+            const currentItem = dicState.items[dicState.currentIndex];
+            const targetWords = currentItem.es.split(/\s+/);
+            const container = document.getElementById('dicSentenceFillContainer');
+            container.innerHTML = '';
+
+            let firstInputEl = null;
+
+            targetWords.forEach((word, idx) => {
+                const cleanWord = cleanPunc(word);
+                const isError = dicState.currentErrors.includes(idx);
+
+                if (!isError || !cleanWord) {
+                    // 正确的词，作为平静的语境展示
+                    const span = document.createElement('span');
+                    span.className = "text-slate-700 font-normal px-1";
+                    span.innerText = word;
+                    container.appendChild(span);
+                } else {
+                    // 错词 -> 转换为一个极简带提示的输入空
+                    const wrapper = document.createElement('span');
+                    wrapper.className = "inline-flex flex-col items-center justify-center mx-1 relative group";
+                    
+                    // 极其克制微小的正确提示字
+                    const hint = document.createElement('span');
+                    hint.className = "text-[11px] font-mono text-teal-600 absolute -top-4 tracking-wider select-none";
+                    hint.innerText = word;
+                    
+                    const input = document.createElement('input');
+                    input.type = "text";
+                    input.className = "fill-blank-input font-medium";
+                    input.style.width = `${Math.max(word.length * 0.9, 3.5)}rem`;
+                    input.dataset.target = word;
+                    input.dataset.clean = cleanWord.toLowerCase();
+                    input.placeholder = "•".repeat(cleanWord.length);
+                    
+                    // 监听键盘按键：Enter提交，Tab跳空
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            submitFillBlank();
+                        }
+                    });
+
+                    // 实时反馈：输入正确时变绿色
+                    input.addEventListener('input', (e) => {
+                        if (cleanPunc(e.target.value).toLowerCase() === input.dataset.clean) {
+                            input.classList.add('is-correct');
+                        } else {
+                            input.classList.remove('is-correct');
+                        }
+                    });
+
+                    wrapper.appendChild(hint);
+                    wrapper.appendChild(input);
+                    container.appendChild(wrapper);
+
+                    if (!firstInputEl) firstInputEl = input;
+                }
+            });
+
+            if (firstInputEl) setTimeout(() => firstInputEl.focus(), 50);
+        }
+
+        // 提交修补填空校验
+        function submitFillBlank() {
+            const inputs = document.querySelectorAll('#dicSentenceFillContainer input');
+            let allPassed = true;
+
+            inputs.forEach(input => {
+                const val = cleanPunc(input.value.trim()).toLowerCase();
+                const target = input.dataset.clean;
+                if (val === target) {
+                    input.classList.add('is-correct');
+                } else {
+                    allPassed = false;
+                    input.style.borderBottomColor = '#f43f5e'; // 短暂微红提示错误空
+                    input.classList.add('bg-rose-50');
+                    setTimeout(() => {
+                        input.style.borderBottomColor = '#94a3b8';
+                        input.classList.remove('bg-rose-50');
+                    }, 800);
+                }
+            });
+
+            if (allPassed) {
+                // 修补全对！清空并打入 模式 C (盲听重验)
+                showToast('错词校准完成！请再次听写本句进行彻底巩固');
+                dicState.mode = 'BLIND_RETRY';
+                setTimeout(() => renderDictationItem(), 300), 
+            } else {
+                showToast('请检查未匹配的单词（请观察上方提示字）');
+            }
+        }
+
+        function nextDictationSentence() {
+            if (dicState.currentIndex < dicState.stats.total - 1) {
+                dicState.currentIndex++;
+                dicState.mode = 'BLIND_FIRST';
+                renderDictationItem();
+            } else {
+                endDictation();
+            }
+        }
+
         function endDictation() {
-            document.getElementById('dicActive').classList.add('hidden'); document.getElementById('dicActive').classList.remove('flex'); document.getElementById('dicSummary').classList.remove('hidden'); document.getElementById('dicSummary').classList.add('flex');
-            document.getElementById('dicStats').innerText = `共 ${dicState.stats.total} 句 | 正确 ${dicState.stats.correct} | 错误 ${dicState.stats.error}`;
+            document.getElementById('dicActive').classList.add('hidden'); 
+            document.getElementById('dicActive').classList.remove('flex'); 
+            document.getElementById('dicSummary').classList.remove('hidden'); 
+            document.getElementById('dicSummary').classList.add('flex');
+            
+            document.getElementById('dicStats').innerText = `共 ${dicState.stats.total} 句 | 一耳直通 ${dicState.stats.perfect} | 经过修补 ${dicState.stats.repaired}`;
         }
+
         function exportDictationPrompt() {
-            let exportText = `[Dictation-Report]\n日期: ${new Date().toISOString().split('T')[0]}\n来源: ${dicState.sourceName}\n\n【错误清单】\n`;
-            if (dicState.todayErrors.length === 0) exportText += `- 无\n`;
-            dicState.todayErrors.forEach(e => { exportText += `- ${e.target} -> ${e.input}\n`; });
-            navigator.clipboard.writeText(exportText).then(() => showToast('数据已复制'));
+            const today = new Date().toISOString().split('T')[0];
+            let exportText = `[Dictation-Report]\n训练日期: ${today}\n音频来源: ${dicState.sourceName}\n训练总句: ${dicState.stats.total} | 一次直通: ${dicState.stats.perfect} | 错误修补: ${dicState.stats.repaired}\n\n【今日错词诊断簿 (共 ${dicState.todayErrorsRecord.length} 个)】\n`;
+            
+            if (dicState.todayErrorsRecord.length === 0) {
+                exportText += `- 太强了！今日听写听力完美无瑕，零错误通关。\n`;
+            } else {
+                dicState.todayErrorsRecord.forEach((word, i) => {
+                    exportText += `${i + 1}. ${word}\n`;
+                });
+            }
+            exportText += `\n【AI 助教深度请求】\n我是在上述西班牙语听写中写错/漏写这些单词的。请分析这些单词在发音辨析（如连读、弱读、辅音混淆）或拼写习惯上的易错原因，并用 2-3 句话给出极简的突破建议。`;
+            
+            navigator.clipboard.writeText(exportText).then(() => showToast('报告已复制到剪贴板！')).catch(() => showToast('复制失败'));
         }
 
         // ================= DeepSeek API =================
