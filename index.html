@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Prisma - 极简记忆 v2.7</title>
-    <link rel="apple-touch-icon" href="icon.png">
-    <link rel="icon" href="icon.png" type="image/png">
-    <link rel="shortcut icon" href="icon.png">
+    <title>我爱背单词</title>
+    <!-- 彻底杀死 Google "G" 图标：内嵌北欧极简多肉仙人掌 SVG 矢量数据，零网络请求，永不丢失 -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M35 85 h30 v10 h-30 z' fill='%2310b981'/%3E%3Cpath d='M50 85 V30 C50 15 40 10 30 15 C20 20 20 35 30 40 C38 44 42 40 45 45 V85' fill='%2310b981' stroke='%23065f46' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M50 55 C55 50 65 45 70 55 C75 65 65 75 55 70 C52 68 50 65 50 65' fill='%2334d399' stroke='%23065f46' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M48 25 L52 15 M40 30 L32 22 M60 55 L68 47 M62 68 L70 72' stroke='%23065f46' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; -webkit-tap-highlight-color: transparent; }
@@ -24,6 +23,7 @@
         .clickable-word { cursor: pointer; border-bottom: 1px dashed transparent; transition: all 0.2s; padding: 2px 4px; border-radius: 4px; }
         .clickable-word:hover, .clickable-word:active { background-color: #f1f5f9; color: #0f172a; border-bottom-color: #94a3b8; }
         
+        /* 强制 iOS 下输入框不小于 16px (1rem)，杜绝 Safari 触控自动缩放 */
         input, textarea, select { font-size: 1rem !important; }
         input:focus, textarea:focus, select:focus { outline: none; border-color: #64748b; box-shadow: 0 0 0 1px #64748b; }
         
@@ -46,9 +46,9 @@
     <!-- 顶部导航 -->
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
-            <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">Prisma</h1>
+            <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
             <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.7</span>
-            <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 italic cursor-pointer hover:text-slate-700 transition" title="重置统计">
+            <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 italic cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
         </div>
@@ -78,7 +78,7 @@
         </div>
     </main>
 
-    <!-- 视图：复习 -->
+    <!-- 视图：复习 (SLA英文优先，支持触控展开中文) -->
     <main id="reviewView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="flex justify-between text-xs text-slate-400 italic mb-6">
             <span>进度: <span id="reviewProgress">1/5</span></span>
@@ -93,7 +93,7 @@
                     <span class="text-[10px] uppercase font-mono text-slate-400 italic mb-1" id="cardSourceBadge">SOURCE</span>
                     <h2 id="cardMeaningEN" class="text-2xl font-normal text-slate-900 mb-3 text-center select-none">English</h2>
                     
-                    <div onclick="toggleZhReveal(event, 'cardMeaningZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-6 select-none" title="触控展开中文补充">
+                    <div onclick="toggleZhReveal(event, 'cardMeaningZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-6 select-none">
                         <span>[+ ZH 补充]</span>
                         <span id="cardMeaningZH" class="hidden font-normal text-slate-600 ml-1">中文</span>
                     </div>
@@ -112,7 +112,7 @@
         <button onclick="showView('homeView')" class="mt-8 text-slate-400 italic text-xs text-center w-full py-2 hover:text-slate-600">结束本次复习</button>
     </main>
 
-    <!-- 视图：默写训练舱 -->
+    <!-- 视图：默写训练舱 (支持在线修改、JST 归笼、当堂自愈) -->
     <main id="spellingView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="spellingSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm text-center flex flex-col">
             <div class="flex border border-slate-200 rounded-md p-1 mb-8 bg-slate-50 text-xs font-medium">
@@ -164,7 +164,7 @@
                     <div class="w-full relative">
                         <input type="text" id="spellInput" 
                                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" 
-                               class="w-full border border-slate-300 rounded-md p-4 text-center text-lg outline-none transition focus:border-slate-600 text-slate-900" 
+                               class="w-full border border-slate-300 rounded-md p-4 text-center text-lg outline-none transition focus:border-slate-600 bg-white text-slate-900 font-normal" 
                                placeholder="键入西班牙语..." onkeypress="if(event.key==='Enter') checkSpelling()">
                                
                         <div id="spellAnswerArea" class="w-full text-center mt-5 hidden flex flex-col items-center">
@@ -177,7 +177,7 @@
                             <span id="spellCorrectAnswer" class="text-lg font-normal text-slate-900 tracking-wide mb-4 block"></span>
                             
                             <div id="spellSafetyNetArea" class="hidden w-full pt-4 border-t border-slate-100 flex flex-col items-center">
-                                <span class="text-xs text-slate-400 italic mb-2.5">点击生词，静默抓取并纳入特训：</span>
+                                <span class="text-xs text-slate-400 italic mb-2.5">点击生词，后台静默抓取并纳入特训：</span>
                                 <div id="spellSafetyNetTokens" class="flex flex-wrap gap-2 justify-center"></div>
                             </div>
                         </div>
@@ -316,43 +316,45 @@
         </div>
     </div>
 
-    <!-- 视图：学习资源库 (低度隐身筛选栏，去掉大按钮，加入末尾精细化小字的“更新”) -->
+    <!-- 视图：学习资源库 (去斜体正字、氧气绿与灰橘区分、右上角极简单行缩短) -->
     <main id="dictionaryView" class="w-full max-w-4xl flex-1 flex flex-col hidden">
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
             
-            <!-- 视觉隐身筛选栏：超低边框、安静文字、无突兀色 -->
             <div class="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white">
                 <div class="flex items-center space-x-3 flex-wrap gap-y-2 w-full md:w-auto">
-                    <select id="dictTypeFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-400 italic hover:text-slate-700 outline-none cursor-pointer pr-4">
-                        <option value="all">全量类型</option>
-                        <option value="word">仅显示：词汇</option>
-                        <option value="sentence">仅显示：句法</option>
+                    <select id="dictTypeFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-500 font-normal hover:text-slate-800 outline-none cursor-pointer pr-4">
+                        <option value="all">全部类型</option>
+                        <option value="word">仅限：词汇</option>
+                        <option value="sentence">仅限：句法</option>
                     </select>
                     <span class="text-slate-200">|</span>
-                    <select id="dictSourceFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-400 italic hover:text-slate-700 outline-none cursor-pointer max-w-[180px] truncate pr-4">
-                        <option value="all">所有课本与级别</option>
+                    <select id="dictSourceFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-500 font-normal hover:text-slate-800 outline-none cursor-pointer max-w-[180px] truncate pr-4">
+                        <option value="all">全部课本</option>
                     </select>
                     <span class="text-slate-200">|</span>
                     <div class="relative flex-1 md:w-48">
-                        <input type="text" id="dictSearchInput" oninput="renderDictionary()" placeholder="搜索词/句/释义..." class="w-full text-xs border-0 bg-slate-50/80 rounded px-2.5 py-1 text-slate-700 outline-none font-normal placeholder:text-slate-400/80 placeholder:italic">
+                        <input type="text" id="dictSearchInput" oninput="renderDictionary()" placeholder="搜索词/句/释义..." class="w-full text-xs border-0 bg-slate-50 rounded px-2.5 py-1 text-slate-700 outline-none font-normal placeholder:text-slate-400">
                     </div>
                 </div>
                 
-                <div class="flex items-center justify-between w-full md:w-auto space-x-4 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100">
-                    <span class="text-xs font-mono text-slate-400 italic" id="dictTotalCount">共 0 项</span>
-                    <div class="flex items-center space-x-3">
-                        <button onclick="exportFilteredDictionary()" class="text-xs text-slate-400 italic hover:text-slate-700 transition font-normal">
-                            复制当前列表
-                        </button>
-                        <span class="text-slate-200">|</span>
-                        <button onclick="clearDictionary()" class="text-xs text-slate-400 italic hover:text-rose-700 transition">清空数据</button>
-                    </div>
+                <!-- 极简单行收敛：严格缩减文字，绝不折半行 -->
+                <div class="flex items-center justify-between w-full md:w-auto space-x-3 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100 whitespace-nowrap">
+                    <span class="text-xs font-mono text-slate-400 font-normal" id="dictTotalCount">共 0 项</span>
+                    <span class="text-slate-200">|</span>
+                    <button onclick="exportFilteredDictionary()" class="text-xs text-slate-500 hover:text-slate-800 transition font-normal">
+                        复制
+                    </button>
+                    <span class="text-slate-200">|</span>
+                    <button onclick="clearDictionary()" class="text-xs text-slate-400 hover:text-rose-700 transition font-normal">
+                        清空
+                    </button>
                 </div>
             </div>
 
             <div class="overflow-x-auto hide-scrollbar flex-1 max-h-[68vh]">
                 <table class="min-w-full text-left text-sm">
-                    <thead class="sticky top-0 bg-slate-50/80 backdrop-blur border-b border-slate-100 z-10 text-[11px] text-slate-400 italic tracking-wider font-mono">
+                    <!-- 去除斜体，表头干净利落正体字 -->
+                    <thead class="sticky top-0 bg-slate-50/80 backdrop-blur border-b border-slate-100 z-10 text-[11px] text-slate-500 font-normal tracking-wider font-mono">
                         <tr>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">西文内容</th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">EN 核心 / ZH 补充</th>
@@ -380,16 +382,16 @@
         </div>
     </main>
 
-    <!-- 视图：设置 (绝对读取保护，不让刷新丢失配置) -->
+    <!-- 视图：设置 (绝对读取保护，持久保存，刷新不遗漏) -->
     <main id="settingsView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm">
             <h2 class="text-lg font-normal text-slate-900 mb-8">系统配置</h2>
             <label class="block text-xs font-normal text-slate-400 italic mb-2">GitHub Token</label>
-            <input type="password" id="ghToken" class="w-full border border-slate-300 rounded-md p-3 mb-5 text-sm outline-none text-slate-900">
+            <input type="password" id="ghToken" class="w-full border border-slate-300 rounded-md p-3 mb-5 text-sm outline-none text-slate-900 font-normal">
             <label class="block text-xs font-normal text-slate-400 italic mb-2">GitHub Gist ID</label>
-            <input type="text" id="ghGistId" class="w-full border border-slate-300 rounded-md p-3 mb-8 text-sm outline-none text-slate-900">
+            <input type="text" id="ghGistId" class="w-full border border-slate-300 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
             <label class="block text-xs font-normal text-slate-400 italic mb-2">DeepSeek API Key (V4-Flash)</label>
-            <input type="password" id="dsToken" class="w-full border border-slate-300 rounded-md p-3 mb-8 text-sm outline-none text-slate-900">
+            <input type="password" id="dsToken" class="w-full border border-slate-300 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
             <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-8">保存配置</button>
             <div class="border-t border-slate-100 pt-6">
                 <button onclick="clearData()" class="w-full text-slate-400 italic border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地数据)</button>
@@ -411,7 +413,7 @@
         let isSpellingEditing = false; 
         let activeHarvestObj = null; let editingId = null; 
 
-        // 绝对安全读取本地持久化设置
+        // 绝对安全读取本地持久化设置，保护现有 API 和 Tokens
         const apiConfig = {
             getGhToken: () => localStorage.getItem('gh_token'),
             getGistId: () => localStorage.getItem('gh_gist_id'),
@@ -479,7 +481,6 @@
         async function init() {
             updateTokenDisplay();
             
-            // 确保页面一打开即可完全渲染本地保存的历史词库，绝不直接显示为0
             const localData = localStorage.getItem('prismaVocab');
             if (localData && localData !== '[]') {
                 vocabList = JSON.parse(localData);
@@ -487,7 +488,6 @@
             }
             updateDashboard();
             
-            // 如果已配置云端同步，则进行拉取对齐
             if (githubAPI.isConfigured()) {
                 await syncFromCloud();
             }
@@ -530,7 +530,6 @@
             if(viewId === 'homeView') updateDashboard();
             if(viewId === 'dictionaryView') renderDictionary();
             
-            // 设置视图进入时绝对呈现本地已存储的配置，杜绝清空错觉
             if(viewId === 'settingsView') {
                 document.getElementById('ghToken').value = apiConfig.getGhToken() || '';
                 document.getElementById('ghGistId').value = apiConfig.getGistId() || '';
@@ -584,7 +583,7 @@
             document.getElementById('totalCount').innerText = wordCount; 
             document.getElementById('dueCount').innerText = dueQueue.length;
             const startBtn = document.getElementById('startBtn'); startBtn.disabled = dueQueue.length === 0;
-            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清零";
+            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清白";
         }
 
         function renderCard() {
@@ -675,7 +674,7 @@
             }
             document.getElementById('spellDueCount').innerText = dueList.length;
             const startBtn = document.getElementById('spellStartBtn'); startBtn.disabled = dueList.length === 0;
-            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已全天清清白白";
+            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已全天清白";
         }
 
         function startSpelling() {
@@ -997,7 +996,7 @@
                 stateBadge.innerText = '语境采词'; stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono italic tracking-wider bg-teal-50 text-teal-800";
                 
                 feedbackBanner.className = "mb-6 text-sm font-normal p-3 rounded-md text-center bg-teal-50 text-teal-800 block border border-teal-200";
-                feedbackBanner.innerText = currentItem.passedFirstTry ? "直通！点击句中任意生词查词，自动净化入库" : "校准通过！句中生词皆可点击一键纳入特训舱";
+                feedbackBanner.innerText = currentItem.passedFirstTry ? "直通！点击句中生词查词，自动净化入库" : "校准通过！句中生词皆可点击纳入特训舱";
                 feedbackBanner.classList.remove('hidden');
                 
                 saveSentenceToVocab(currentItem.es, currentItem.zh, dicState.sourceName);
@@ -1007,7 +1006,7 @@
             }
         }
 
-        // ================= AI 智能质检与单条更新洗炼 =================
+        // ================= AI 智能质检与极速响应更新 =================
         async function runAIQualityControl(text, isSentence, sourceName) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
@@ -1053,20 +1052,32 @@ Rules:
             }
         }
 
-        // 精细化单条更新：替代原来的全量洗白，静悄悄不发光
-        async function updateSingleItem(id) {
+        // 精细化单条更新：彻底修复“按两下”及触控冲突，先秒刷界面，后静默存盘
+        async function updateSingleItem(id, btnEl) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return showToast('请先在设置页配置 API Key');
             
             const item = vocabList.find(v => v.id === id);
             if (!item) return;
             
-            showToast(`正在更新: ${item.word}...`);
+            // 按钮生命体征即时变化：静悄悄变成处理中，彻底防止连续点击
+            if(btnEl) {
+                btnEl.disabled = true;
+                btnEl.innerText = "处理中...";
+                btnEl.className = "text-teal-700 font-normal transition cursor-default";
+            }
+            
+            showToast(`更新中: ${item.word}...`);
             const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2');
             item.word = qc.word; item.meaning_en = qc.meaning_en; item.meaning_zh = qc.meaning_zh; item.status = 'active';
             if(item.itemType === 'sentence') item.example = ''; 
             
-            await saveToCloud(true); renderDictionary(); showToast(`更新完成: ${item.word}`);
+            // 极速乐观渲染：拿到数据第一秒直接刷新屏幕！绝不卡顿等待网络云端
+            renderDictionary(); 
+            showToast(`更新完成: ${item.word}`);
+            
+            // 耗时的云端持久化退居幕后静默完成
+            await saveToCloud(true);
         }
 
         function buildHarvestSentenceUI(esText, zhText) {
@@ -1244,7 +1255,7 @@ Rules:
             navigator.clipboard.writeText(exportText).then(() => showToast('分析报告已复制')).catch(() => showToast('复制失败'));
         }
 
-        // ================= 库区矩阵渲染与文字三定律 =================
+        // ================= 库区矩阵渲染（氧气绿/灰橘微标、正体无触控陷阱） =================
         function startEdit(id) { editingId = id; renderDictionary(); }
         function cancelEdit() { editingId = null; renderDictionary(); }
         async function saveEdit(id) {
@@ -1276,7 +1287,7 @@ Rules:
                     }
                 });
                 const currentOpt = filterSourceEl.value;
-                filterSourceEl.innerHTML = '<option value="all">所有课本与级别</option>' + 
+                filterSourceEl.innerHTML = '<option value="all">全部课本</option>' + 
                     Array.from(sourcesSet).sort().map(s => `<option value="${s}" ${s===currentOpt?'selected':''}>${s}</option>`).join('');
             }
 
@@ -1329,7 +1340,7 @@ Rules:
                             ${isSentence ? '<span class="text-xs text-slate-400 italic">（句法条目留空）</span>' : `<textarea id="edit_ex_${item.id}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-400 italic" rows="2" placeholder="西语语境">${item.example || ''}</textarea>`}
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
-                            <span class="text-[10px] px-1.5 py-0.5 rounded ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'} font-mono italic block w-max">${isSentence ? '句法' : '词汇'}</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-normal block w-max ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
                             <input type="text" id="edit_src_${item.id}" value="${item.source || ''}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-400 italic mt-1" placeholder="出处">
                         </td>
                         <td class="px-5 py-3 text-center align-top space-y-1.5">
@@ -1348,13 +1359,14 @@ Rules:
                             ${item.example ? `"${item.example}"` : '<span class="text-slate-300">（句法留空）</span>'}
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-nowrap">
-                            <span class="text-[10px] px-1.5 py-0.5 rounded ${isSentence ? 'bg-amber-50/80 text-amber-800' : 'bg-slate-100 text-slate-600'} font-mono italic mr-1">${isSentence ? '句法' : '词汇'}</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-normal mr-1 ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
                             <span class="text-[11px] font-mono text-slate-400 italic block mt-1.5 select-all">${item.source || 'Prisma Core'}</span>
                         </td>
-                        <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs">
-                            <button onclick="updateSingleItem(${item.id})" class="text-slate-400 italic hover:text-slate-700 transition" title="触发单条洗炼与更新">更新</button>
-                            <button onclick="startEdit(${item.id})" class="text-slate-400 italic hover:text-slate-700 transition">编辑</button>
-                            <button onclick="deleteWord(${item.id})" class="text-slate-400 italic hover:text-rose-700 transition">删除</button>
+                        <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs font-normal">
+                            <!-- 去除 title 与 hover 变色冲突，确保 iOS 手指轻触即刻响应，绝不连续空按 -->
+                            <button onclick="updateSingleItem(${item.id}, this)" class="text-teal-800 hover:text-teal-900 transition">更新</button>
+                            <button onclick="startEdit(${item.id})" class="text-slate-400 hover:text-slate-700 transition">编辑</button>
+                            <button onclick="deleteWord(${item.id})" class="text-slate-400 hover:text-rose-700 transition">删除</button>
                         </td>
                     `;
                 }
@@ -1381,7 +1393,7 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('成功复制 Markdown 练习清单！')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清空'); } }
+        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清白'); } }
         async function deleteWord(id) { if(confirm('确定从此库中删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('系统配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
