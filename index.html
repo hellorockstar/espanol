@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>我爱背单词</title>
-    <!-- 彻底杀死 Google "G" 图标：内嵌北欧极简多肉仙人掌 SVG 矢量数据，零网络请求，永不丢失 -->
+    <!-- 内嵌北欧极简多肉仙人掌 SVG 矢量数据，零网络请求，彻底锁定 -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M35 85 h30 v10 h-30 z' fill='%2310b981'/%3E%3Cpath d='M50 85 V30 C50 15 40 10 30 15 C20 20 20 35 30 40 C38 44 42 40 45 45 V85' fill='%2310b981' stroke='%23065f46' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M50 55 C55 50 65 45 70 55 C75 65 65 75 55 70 C52 68 50 65 50 65' fill='%2334d399' stroke='%23065f46' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M48 25 L52 15 M40 30 L32 22 M60 55 L68 47 M62 68 L70 72' stroke='%23065f46' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -78,7 +78,7 @@
         </div>
     </main>
 
-    <!-- 视图：复习 (SLA英文优先，支持触控展开中文) -->
+    <!-- 视图：复习 -->
     <main id="reviewView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="flex justify-between text-xs text-slate-400 italic mb-6">
             <span>进度: <span id="reviewProgress">1/5</span></span>
@@ -112,7 +112,7 @@
         <button onclick="showView('homeView')" class="mt-8 text-slate-400 italic text-xs text-center w-full py-2 hover:text-slate-600">结束本次复习</button>
     </main>
 
-    <!-- 视图：默写训练舱 (支持在线修改、JST 归笼、当堂自愈) -->
+    <!-- 视图：默写训练舱 -->
     <main id="spellingView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="spellingSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm text-center flex flex-col">
             <div class="flex border border-slate-200 rounded-md p-1 mb-8 bg-slate-50 text-xs font-medium">
@@ -316,7 +316,7 @@
         </div>
     </div>
 
-    <!-- 视图：学习资源库 (去斜体正字、氧气绿与灰橘区分、右上角极简单行缩短) -->
+    <!-- 视图：学习资源库 -->
     <main id="dictionaryView" class="w-full max-w-4xl flex-1 flex flex-col hidden">
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
             
@@ -337,7 +337,6 @@
                     </div>
                 </div>
                 
-                <!-- 极简单行收敛：严格缩减文字，绝不折半行 -->
                 <div class="flex items-center justify-between w-full md:w-auto space-x-3 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100 whitespace-nowrap">
                     <span class="text-xs font-mono text-slate-400 font-normal" id="dictTotalCount">共 0 项</span>
                     <span class="text-slate-200">|</span>
@@ -353,7 +352,6 @@
 
             <div class="overflow-x-auto hide-scrollbar flex-1 max-h-[68vh]">
                 <table class="min-w-full text-left text-sm">
-                    <!-- 去除斜体，表头干净利落正体字 -->
                     <thead class="sticky top-0 bg-slate-50/80 backdrop-blur border-b border-slate-100 z-10 text-[11px] text-slate-500 font-normal tracking-wider font-mono">
                         <tr>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">西文内容</th>
@@ -413,7 +411,7 @@
         let isSpellingEditing = false; 
         let activeHarvestObj = null; let editingId = null; 
 
-        // 绝对安全读取本地持久化设置，保护现有 API 和 Tokens
+        // 绝对安全读取本地持久化设置
         const apiConfig = {
             getGhToken: () => localStorage.getItem('gh_token'),
             getGistId: () => localStorage.getItem('gh_gist_id'),
@@ -503,9 +501,13 @@
         function migrateDataSchema(list) {
             list.forEach(w => {
                 if (!w.itemType) w.itemType = 'word';
+                
+                // 斩断历史冗余后缀，静默清洗数据
+                if (w.source) w.source = w.source.replace(/\s*-\s*听写(导入|段落)/g, '');
+                
                 if (!w.source || w.source.trim() === '') {
                     if (w.example && (w.example.includes('Prisma') || w.example.includes('Pista') || w.example.includes('自听写'))) {
-                        w.source = w.example.replace('自听写任务 100% 全量注入', 'Nuevo Prisma A1-A2 - 听写导入');
+                        w.source = 'Nuevo Prisma A1-A2'; 
                         if(w.itemType === 'sentence') w.example = ""; 
                     } else {
                         w.source = 'Nuevo Prisma A1-A2';
@@ -583,7 +585,7 @@
             document.getElementById('totalCount').innerText = wordCount; 
             document.getElementById('dueCount').innerText = dueQueue.length;
             const startBtn = document.getElementById('startBtn'); startBtn.disabled = dueQueue.length === 0;
-            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清白";
+            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清空";
         }
 
         function renderCard() {
@@ -674,7 +676,7 @@
             }
             document.getElementById('spellDueCount').innerText = dueList.length;
             const startBtn = document.getElementById('spellStartBtn'); startBtn.disabled = dueList.length === 0;
-            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已全天清白";
+            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已清空";
         }
 
         function startSpelling() {
@@ -892,7 +894,8 @@
             const pistaMatch = rawText.match(/(?:Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/i);
             if (pistaMatch && !sourceName) { sourceName = pistaMatch[0].replace(/\s+/g, ' '); }
 
-            if (!sourceName) sourceName = 'Nuevo Prisma A1-A2 - 听写段落';
+            // 净化默认后缀，杜绝下拉框污染
+            if (!sourceName) sourceName = 'Nuevo Prisma A1-A2';
             else if (/^Pista/i.test(sourceName) && !sourceName.includes('Prisma')) {
                 sourceName = `Nuevo Prisma A1-A2 - ${sourceName}`;
             }
@@ -1006,23 +1009,28 @@
             }
         }
 
-        // ================= AI 智能质检与极速响应更新 =================
+        // ================= AI 智能质检与极速响应更新 (词句双轨分流) =================
         async function runAIQualityControl(text, isSentence, sourceName) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
             
+            // 严格分流：句子走教研编辑，词汇走极致简短的词典
+            const systemPrompt = isSentence 
+                ? `You are a Spanish SLA linguist and editor. Clean and enrich the input text.
+Rules:
+1. Fix Spanish capitalization (Sentence case for sentences; preserve capitalized proper nouns/names like Lucía, Sofía). DO NOT lowercase everything!
+2. Remove any numbering tags like "1.", "Pista 2", etc. from the text itself.
+3. Provide precise EN Core (English) and ZH Supplement (Chinese) meanings. Do NOT hard-translate Spanish names into Chinese phonetics.
+4. Return strictly JSON with keys: "clean_text", "meaning_en", "meaning_zh".`
+                : `You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON with keys: "clean_text" (base form/lemma), "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).`;
+
             try {
                 const res = await fetch('https://api.deepseek.com/chat/completions', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     body: JSON.stringify({
                         model: 'deepseek-v4-flash',
                         messages: [
-                            { role: 'system', content: `You are a Spanish SLA linguist and editor. Clean and enrich the input text.
-Rules:
-1. Fix Spanish capitalization (Sentence case for sentences; preserve capitalized proper nouns/names like Lucía, Sofía, España). DO NOT lowercase everything!
-2. Remove any numbering tags like "1.", "Pista 2", etc. from the text itself.
-3. Provide precise EN Core (English) and ZH Supplement (Chinese) meanings. Do NOT hard-translate Spanish names into Chinese phonetics.
-4. Return strictly JSON with keys: "clean_text", "meaning_en", "meaning_zh".` },
+                            { role: 'system', content: systemPrompt },
                             { role: 'user', content: `Input (${isSentence ? 'Sentence' : 'Word'}): "${text}"` }
                         ], response_format: { type: "json_object" }
                     })
@@ -1032,7 +1040,7 @@ Rules:
                     let currentUsage = parseInt(localStorage.getItem('ds_token_usage') || '0'); localStorage.setItem('ds_token_usage', currentUsage + data.usage.total_tokens); updateTokenDisplay();
                 }
                 const resObj = JSON.parse(data.choices[0].message.content);
-                return { word: resObj.clean_text || text.trim(), meaning_en: resObj.meaning_en || '', meaning_zh: resObj.meaning_zh || '', source: sourceName, status: 'active' };
+                return { word: resObj.clean_text || resObj.lemma || text.trim(), meaning_en: resObj.meaning_en || '', meaning_zh: resObj.meaning_zh || '', source: sourceName, status: 'active' };
             } catch (e) {
                 return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
             }
@@ -1052,7 +1060,6 @@ Rules:
             }
         }
 
-        // 精细化单条更新：彻底修复“按两下”及触控冲突，先秒刷界面，后静默存盘
         async function updateSingleItem(id, btnEl) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return showToast('请先在设置页配置 API Key');
@@ -1060,7 +1067,6 @@ Rules:
             const item = vocabList.find(v => v.id === id);
             if (!item) return;
             
-            // 按钮生命体征即时变化：静悄悄变成处理中，彻底防止连续点击
             if(btnEl) {
                 btnEl.disabled = true;
                 btnEl.innerText = "处理中...";
@@ -1072,11 +1078,9 @@ Rules:
             item.word = qc.word; item.meaning_en = qc.meaning_en; item.meaning_zh = qc.meaning_zh; item.status = 'active';
             if(item.itemType === 'sentence') item.example = ''; 
             
-            // 极速乐观渲染：拿到数据第一秒直接刷新屏幕！绝不卡顿等待网络云端
             renderDictionary(); 
             showToast(`更新完成: ${item.word}`);
             
-            // 耗时的云端持久化退居幕后静默完成
             await saveToCloud(true);
         }
 
@@ -1120,7 +1124,7 @@ Rules:
                     body: JSON.stringify({
                         model: 'deepseek-v4-flash',
                         messages: [
-                            { role: 'system', content: 'You are a Spanish dictionary. Return strictly JSON: "lemma" (base form), "pos", "meaning_en" (EN translation), "meaning_zh" (ZH translation).' },
+                            { role: 'system', content: 'You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON: "lemma" (base form), "pos", "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).' },
                             { role: 'user', content: `Word: "${word}"\nSentence: "${sentenceEs}"` }
                         ], response_format: { type: "json_object" }
                     })
@@ -1255,7 +1259,7 @@ Rules:
             navigator.clipboard.writeText(exportText).then(() => showToast('分析报告已复制')).catch(() => showToast('复制失败'));
         }
 
-        // ================= 库区矩阵渲染（氧气绿/灰橘微标、正体无触控陷阱） =================
+        // ================= 库区矩阵渲染（去除斜体、单行布局、精准触控更新） =================
         function startEdit(id) { editingId = id; renderDictionary(); }
         function cancelEdit() { editingId = null; renderDictionary(); }
         async function saveEdit(id) {
@@ -1363,7 +1367,6 @@ Rules:
                             <span class="text-[11px] font-mono text-slate-400 italic block mt-1.5 select-all">${item.source || 'Prisma Core'}</span>
                         </td>
                         <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs font-normal">
-                            <!-- 去除 title 与 hover 变色冲突，确保 iOS 手指轻触即刻响应，绝不连续空按 -->
                             <button onclick="updateSingleItem(${item.id}, this)" class="text-teal-800 hover:text-teal-900 transition">更新</button>
                             <button onclick="startEdit(${item.id})" class="text-slate-400 hover:text-slate-700 transition">编辑</button>
                             <button onclick="deleteWord(${item.id})" class="text-slate-400 hover:text-rose-700 transition">删除</button>
@@ -1393,7 +1396,7 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('成功复制 Markdown 练习清单！')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清白'); } }
+        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清空'); } }
         async function deleteWord(id) { if(confirm('确定从此库中删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('系统配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
