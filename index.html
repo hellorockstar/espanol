@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Prisma - 极简记忆 v2.6</title>
-    <!-- [战役 4] 彻底补全全端图标声明，确保桌面网页与移动端锁足绿色仙人掌 -->
+    <title>Prisma - 极简记忆 v2.7</title>
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" href="icon.png" type="image/png">
     <link rel="shortcut icon" href="icon.png">
@@ -25,7 +24,6 @@
         .clickable-word { cursor: pointer; border-bottom: 1px dashed transparent; transition: all 0.2s; padding: 2px 4px; border-radius: 4px; }
         .clickable-word:hover, .clickable-word:active { background-color: #f1f5f9; color: #0f172a; border-bottom-color: #94a3b8; }
         
-        /* 强制 iOS 下输入框不小于 16px (1rem)，防止 Safari 自动放大屏幕 */
         input, textarea, select { font-size: 1rem !important; }
         input:focus, textarea:focus, select:focus { outline: none; border-color: #64748b; box-shadow: 0 0 0 1px #64748b; }
         
@@ -49,7 +47,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">Prisma</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.6</span>
+            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.7</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 italic cursor-pointer hover:text-slate-700 transition" title="重置统计">
                 Token: 0.000 M
             </span>
@@ -80,7 +78,7 @@
         </div>
     </main>
 
-    <!-- 视图：复习 (SLA英文优先，支持iOS点击或PC悬停显示中文) -->
+    <!-- 视图：复习 -->
     <main id="reviewView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="flex justify-between text-xs text-slate-400 italic mb-6">
             <span>进度: <span id="reviewProgress">1/5</span></span>
@@ -95,7 +93,7 @@
                     <span class="text-[10px] uppercase font-mono text-slate-400 italic mb-1" id="cardSourceBadge">SOURCE</span>
                     <h2 id="cardMeaningEN" class="text-2xl font-normal text-slate-900 mb-3 text-center select-none">English</h2>
                     
-                    <div onclick="toggleZhReveal(event, 'cardMeaningZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-6 select-none" title="点击或触控查看中文补充">
+                    <div onclick="toggleZhReveal(event, 'cardMeaningZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-6 select-none" title="触控展开中文补充">
                         <span>[+ ZH 补充]</span>
                         <span id="cardMeaningZH" class="hidden font-normal text-slate-600 ml-1">中文</span>
                     </div>
@@ -114,12 +112,12 @@
         <button onclick="showView('homeView')" class="mt-8 text-slate-400 italic text-xs text-center w-full py-2 hover:text-slate-600">结束本次复习</button>
     </main>
 
-    <!-- 视图：默写训练舱 (支持心流挂起、在线极简订正、视觉排毒) -->
+    <!-- 视图：默写训练舱 -->
     <main id="spellingView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="spellingSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm text-center flex flex-col">
             <div class="flex border border-slate-200 rounded-md p-1 mb-8 bg-slate-50 text-xs font-medium">
-                <button id="tabBtnWord" onclick="switchSpellingTrack('word')" class="flex-1 py-2.5 rounded transition bg-white text-slate-900 shadow-sm">词汇特训舱</button>
-                <button id="tabBtnSentence" onclick="switchSpellingTrack('sentence')" class="flex-1 py-2.5 rounded transition text-slate-400 italic hover:text-slate-700">句法构筑舱</button>
+                <button id="tabBtnWord" onclick="switchSpellingTrack('word')" class="flex-1 py-2.5 rounded transition bg-white text-slate-900 font-normal shadow-sm">词汇特训舱</button>
+                <button id="tabBtnSentence" onclick="switchSpellingTrack('sentence')" class="flex-1 py-2.5 rounded transition text-slate-400 italic hover:text-slate-700 font-normal">句法构筑舱</button>
             </div>
             <h2 id="spellSetupTitle" class="text-lg font-normal text-slate-900 mb-1">词汇特训舱</h2>
             <p id="spellSetupSubtitle" class="text-xs text-slate-400 italic mb-8">隐写抽拉循环 · 构建基础单词记忆</p>
@@ -128,7 +126,7 @@
             
             <div id="spellLockWarningArea" class="hidden mb-6 text-left bg-slate-50 border border-slate-200 p-3.5 rounded-md text-xs text-slate-600">
                 <div class="font-normal mb-1 flex items-center text-slate-800">
-                    <span>🔒 被生词解锁条件拦截的句法: <span id="lockedSentencesCount">0</span> 句</span>
+                    <span>被生词条件拦截的句法: <span id="lockedSentencesCount">0</span> 句</span>
                 </div>
                 <div id="lockedSentencesList" class="text-[11px] text-slate-400 italic space-y-1 max-h-24 overflow-y-auto pl-1"></div>
             </div>
@@ -138,20 +136,19 @@
             </button>
         </div>
 
-        <!-- 默写进行台 -->
         <div id="spellingActive" class="w-full flex-col hidden flex-1">
             <div class="flex justify-between items-center text-xs text-slate-400 italic mb-6">
                 <span>进度: <span id="spellProgress">1/5</span></span>
                 <span id="spellTrackBadge" class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono italic">词汇</span>
                 <div class="flex items-center space-x-3">
                     <span>连胜: <span id="spellStreakBadge">0</span></span>
-                    <button onclick="quitSpellingSession()" class="text-slate-400 italic hover:text-slate-700 transition ml-2 py-1" title="放弃本次会话，退回舱门">✕ 退出</button>
+                    <button onclick="quitSpellingSession()" class="text-slate-400 italic hover:text-slate-700 transition ml-2 py-1">退出</button>
                 </div>
             </div>
             
             <div class="bg-white border border-slate-200 rounded-xl p-8 shadow-sm flex flex-col items-center justify-center min-h-[340px] relative">
                 <button onclick="toggleSpellingInlineEdit()" class="absolute top-4 right-4 text-xs text-slate-400 italic hover:text-slate-700 flex items-center space-x-1 bg-slate-50 px-2 py-1 rounded border border-slate-200 transition">
-                    <span>✏️ 修正本题</span>
+                    <span>修正本题</span>
                 </button>
 
                 <div id="spellingDisplayArea" class="w-full flex flex-col items-center">
@@ -159,7 +156,7 @@
                     <span class="text-[11px] text-slate-400 italic font-mono mb-3" id="spellSourceDisplay"></span>
                     <h2 id="spellTargetEN" class="text-2xl font-normal text-slate-900 mb-2 text-center leading-normal">English</h2>
                     
-                    <div onclick="toggleZhReveal(event, 'spellTargetZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-8 select-none" title="点击展开中文提示">
+                    <div onclick="toggleZhReveal(event, 'spellTargetZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-400 italic text-xs transition mb-8 select-none">
                         <span>[+ ZH 提示]</span>
                         <span id="spellTargetZH" class="hidden font-normal text-slate-600 ml-1">中文</span>
                     </div>
@@ -172,7 +169,7 @@
                                
                         <div id="spellAnswerArea" class="w-full text-center mt-5 hidden flex flex-col items-center">
                             <div id="spellUserDiffBox" class="mb-3 text-center hidden">
-                                <span class="text-[11px] text-slate-400 italic block mb-0.5">你的提交 (对齐差异):</span>
+                                <span class="text-[11px] text-slate-400 italic block mb-0.5">你的提交:</span>
                                 <span id="spellUserWrongInput" class="text-base font-normal text-slate-500 line-through decoration-amber-500/80 decoration-wavy block"></span>
                             </div>
 
@@ -180,7 +177,7 @@
                             <span id="spellCorrectAnswer" class="text-lg font-normal text-slate-900 tracking-wide mb-4 block"></span>
                             
                             <div id="spellSafetyNetArea" class="hidden w-full pt-4 border-t border-slate-100 flex flex-col items-center">
-                                <span class="text-xs text-slate-400 italic mb-2.5">点击生词：后台静默联网抓取 AI 英文释义并纳入特训：</span>
+                                <span class="text-xs text-slate-400 italic mb-2.5">点击生词，静默抓取并纳入特训：</span>
                                 <div id="spellSafetyNetTokens" class="flex flex-wrap gap-2 justify-center"></div>
                             </div>
                         </div>
@@ -224,21 +221,21 @@
         </div>
     </main>
 
-    <!-- 视图：听写 (智能命名补全、解耦 example、色彩排毒) -->
+    <!-- 视图：听写 -->
     <main id="dictationView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div id="dicSetup" class="bg-white border border-slate-200 rounded-xl p-8 w-full flex flex-col h-full shadow-sm">
             <h2 class="text-lg font-normal text-slate-900 mb-6">听写任务准备</h2>
             <div class="flex mb-6">
                 <span class="inline-flex items-center px-4 text-sm text-slate-400 italic bg-slate-50 border border-r-0 border-slate-300 rounded-l-md font-mono">来源</span>
-                <input type="text" id="dicSource" class="rounded-none rounded-r-md border border-slate-300 w-full text-sm p-3 outline-none text-slate-900 font-normal" placeholder="如: Pista 2 (将自动规范化补全)">
+                <input type="text" id="dicSource" class="rounded-none rounded-r-md border border-slate-300 w-full text-sm p-3 outline-none text-slate-900 font-normal" placeholder="如: Pista 2">
             </div>
-            <textarea id="dicInput" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-sm mb-6 outline-none text-slate-900 font-normal" placeholder="直接粘贴课文，系统将智能过滤中文说明并对齐..." style="min-height: 150px;"></textarea>
+            <textarea id="dicInput" class="w-full flex-1 border border-slate-300 rounded-md p-4 text-sm mb-6 outline-none text-slate-900 font-normal" placeholder="直接粘贴课文，系统将自动过滤中文并对齐..." style="min-height: 150px;"></textarea>
             <button onclick="parseToStaging()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base">解析并进入校准台</button>
         </div>
 
         <div id="dicStaging" class="bg-white border border-slate-200 rounded-xl p-6 w-full hidden flex-col shadow-sm flex-1">
             <h2 class="text-base font-normal text-slate-900 mb-1">缓冲校准台</h2>
-            <p class="text-xs text-slate-400 italic mb-4">编辑西汉文本、合并或拆分，确保每一行与音频 1:1 绝对对齐。</p>
+            <p class="text-xs text-slate-400 italic mb-4">编辑西汉文本，确保与音频 1:1 绝对对齐。</p>
             <div id="dicStagingList" class="space-y-3 max-h-[52vh] overflow-y-auto mb-6 pr-1 hide-scrollbar flex-1"></div>
             <div class="flex space-x-3 mt-auto pt-4 border-t border-slate-100">
                 <button onclick="confirmStagingAndStart()" class="w-2/3 btn-primary py-3.5 rounded-md font-medium text-sm">确认对齐并开始听写</button>
@@ -277,7 +274,7 @@
                 <div id="dicHarvestArea" class="hidden flex-col flex-1 mb-6">
                     <div class="text-xs text-slate-400 italic mb-4 flex justify-between items-center pb-2 border-b border-slate-100">
                         <span>西班牙语语境采词台</span>
-                        <span class="text-[11px] text-slate-400 italic">点击生词查询，将自动经历 AI 洗炼后入库</span>
+                        <span class="text-[11px] text-slate-400 italic">点击生词查询，将静默洗炼后入库</span>
                     </div>
                     <div id="dicHarvestSentence" class="p-6 bg-slate-50 rounded-lg text-xl leading-loose text-center text-slate-900 font-normal my-auto flex flex-wrap items-center justify-center gap-x-1.5 gap-y-3 border border-slate-200"></div>
                 </div>
@@ -296,14 +293,14 @@
             <h2 class="text-lg font-normal text-slate-900 mb-6 text-center">听写分析总结</h2>
             <div class="bg-slate-50 p-4 rounded-md mb-6 text-center border border-slate-100">
                 <p class="text-sm text-slate-900" id="dicStats">共 0 句 | 直通 0 | 修补 0</p>
-                <p class="text-xs text-teal-800 mt-2">✓ 本组句子已经携标准释义与来源存入句法库</p>
+                <p class="text-xs text-teal-800 mt-2">✓ 本组句子已经携规范来源存入句法库</p>
             </div>
             <button onclick="exportDictationPrompt()" class="w-full btn-secondary py-3.5 rounded-md font-medium text-sm mb-4">复制错词 AI 教研解析请求</button>
             <button onclick="showView('homeView')" class="w-full text-sm text-slate-400 italic py-2 hover:text-slate-700">返回首页</button>
         </div>
     </main>
 
-    <!-- 气泡卡片：AI 释义与采词入库 (SLA 英文优先) -->
+    <!-- 气泡卡片：AI 释义与采词入库 -->
     <div id="inlinePopover" class="fixed z-50 bg-white border border-slate-300 rounded-xl shadow-xl p-4 w-64 hidden transition-all text-left">
         <div id="popoverLoading" class="text-center py-4"><span class="spinner"></span></div>
         <div id="popoverResult" class="hidden space-y-2.5 text-xs">
@@ -319,34 +316,35 @@
         </div>
     </div>
 
-    <!-- 视图：学习资源库 (战役 5 重构：主角西文优先，灰斜元数据最右，一键洗白) -->
+    <!-- 视图：学习资源库 (低度隐身筛选栏，去掉大按钮，加入末尾精细化小字的“更新”) -->
     <main id="dictionaryView" class="w-full max-w-4xl flex-1 flex flex-col hidden">
         <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
-            <div class="p-6 border-b border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50">
+            
+            <!-- 视觉隐身筛选栏：超低边框、安静文字、无突兀色 -->
+            <div class="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white">
                 <div class="flex items-center space-x-3 flex-wrap gap-y-2 w-full md:w-auto">
-                    <h2 class="text-base font-normal text-slate-900 mr-2">学习库</h2>
-                    <select id="dictTypeFilter" onchange="renderDictionary()" class="text-xs border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-700 outline-none">
+                    <select id="dictTypeFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-400 italic hover:text-slate-700 outline-none cursor-pointer pr-4">
                         <option value="all">全量类型</option>
-                        <option value="word">仅显示：词汇 [词]</option>
-                        <option value="sentence">仅显示：句法 [句]</option>
+                        <option value="word">仅显示：词汇</option>
+                        <option value="sentence">仅显示：句法</option>
                     </select>
-                    <select id="dictSourceFilter" onchange="renderDictionary()" class="text-xs border border-slate-300 rounded-md px-2.5 py-1.5 bg-white text-slate-700 outline-none max-w-[180px] truncate">
+                    <span class="text-slate-200">|</span>
+                    <select id="dictSourceFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-400 italic hover:text-slate-700 outline-none cursor-pointer max-w-[180px] truncate pr-4">
                         <option value="all">所有课本与级别</option>
                     </select>
+                    <span class="text-slate-200">|</span>
                     <div class="relative flex-1 md:w-48">
-                        <input type="text" id="dictSearchInput" oninput="renderDictionary()" placeholder="搜索词/句/释义..." class="w-full text-xs border border-slate-300 rounded-md px-3 py-1.5 bg-white text-slate-900 outline-none focus:border-slate-500 font-normal">
+                        <input type="text" id="dictSearchInput" oninput="renderDictionary()" placeholder="搜索词/句/释义..." class="w-full text-xs border-0 bg-slate-50/80 rounded px-2.5 py-1 text-slate-700 outline-none font-normal placeholder:text-slate-400/80 placeholder:italic">
                     </div>
                 </div>
                 
-                <div class="flex items-center justify-between w-full md:w-auto space-x-4 border-t md:border-t-0 pt-3 md:pt-0 border-slate-200">
+                <div class="flex items-center justify-between w-full md:w-auto space-x-4 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100">
                     <span class="text-xs font-mono text-slate-400 italic" id="dictTotalCount">共 0 项</span>
                     <div class="flex items-center space-x-3">
-                        <button onclick="cleanLegacyData()" id="btnCleanLegacy" class="text-xs bg-teal-50 border border-teal-200 text-teal-800 hover:bg-teal-100 transition px-3 py-1.5 rounded-md font-medium" title="调用 AI 自动修复历史缺损释义与大小写">
-                            ✨ 一键洗白存量数据
-                        </button>
-                        <button onclick="exportFilteredDictionary()" class="text-xs bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition px-3 py-1.5 rounded-md font-medium">
+                        <button onclick="exportFilteredDictionary()" class="text-xs text-slate-400 italic hover:text-slate-700 transition font-normal">
                             复制当前列表
                         </button>
+                        <span class="text-slate-200">|</span>
                         <button onclick="clearDictionary()" class="text-xs text-slate-400 italic hover:text-rose-700 transition">清空数据</button>
                     </div>
                 </div>
@@ -354,14 +352,13 @@
 
             <div class="overflow-x-auto hide-scrollbar flex-1 max-h-[68vh]">
                 <table class="min-w-full text-left text-sm">
-                    <!-- [战役 5] 表头列重构：西文在左，元数据灰斜后置 -->
-                    <thead class="sticky top-0 bg-slate-100/80 backdrop-blur border-b border-slate-200 z-10 text-[11px] text-slate-400 italic tracking-wider font-mono">
+                    <thead class="sticky top-0 bg-slate-50/80 backdrop-blur border-b border-slate-100 z-10 text-[11px] text-slate-400 italic tracking-wider font-mono">
                         <tr>
-                            <th class="px-5 py-3.5 font-normal whitespace-nowrap">西文内容</th>
-                            <th class="px-5 py-3.5 font-normal whitespace-nowrap">EN 核心 / ZH 补充</th>
-                            <th class="px-5 py-3.5 font-normal whitespace-nowrap">句法语境 (EXAMPLE)</th>
-                            <th class="px-5 py-3.5 font-normal whitespace-nowrap">类型 / 等级出处</th>
-                            <th class="px-5 py-3.5 font-normal text-center whitespace-nowrap">操作</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">西文内容</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">EN 核心 / ZH 补充</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">句法语境 (EXAMPLE)</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">类型 / 等级出处</th>
+                            <th class="px-5 py-3 font-normal text-center whitespace-nowrap">操作</th>
                         </tr>
                     </thead>
                     <tbody id="dictionaryBody" class="divide-y divide-slate-100 text-slate-700"></tbody>
@@ -375,16 +372,15 @@
         <div class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm">
             <h2 class="text-lg font-normal text-slate-900 mb-4">JSON 批量导入</h2>
             <div class="mb-5 bg-slate-50 p-3.5 rounded-md border border-slate-200">
-                <label class="block text-xs font-normal text-slate-700 mb-1.5">防呆校验 · 默认课本/出处标签：</label>
+                <label class="block text-xs font-normal text-slate-700 mb-1.5">防呆校验 · 默认出处标签：</label>
                 <input type="text" id="importDefaultSource" value="Nuevo Prisma A1-A2" class="w-full border border-slate-300 rounded p-2 text-xs outline-none focus:border-slate-500 text-slate-900 font-normal bg-white">
-                <p class="text-[11px] text-slate-400 italic mt-1">若导入 JSON 内含未指明 `source` 的词句，将自动赋予此标签。</p>
             </div>
             <textarea id="jsonInput" class="w-full h-44 border border-slate-300 rounded-md p-4 text-xs font-mono mb-6 outline-none bg-slate-50 text-slate-900 font-normal" placeholder="粘贴 JSON 数组..."></textarea>
             <button onclick="importJSON()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base">导入并云端同步</button>
         </div>
     </main>
 
-    <!-- 视图：设置 -->
+    <!-- 视图：设置 (绝对读取保护，不让刷新丢失配置) -->
     <main id="settingsView" class="w-full max-w-md flex-1 flex flex-col hidden">
         <div class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm">
             <h2 class="text-lg font-normal text-slate-900 mb-8">系统配置</h2>
@@ -396,7 +392,7 @@
             <input type="password" id="dsToken" class="w-full border border-slate-300 rounded-md p-3 mb-8 text-sm outline-none text-slate-900">
             <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-8">保存配置</button>
             <div class="border-t border-slate-100 pt-6">
-                <button onclick="clearData()" class="w-full text-slate-400 italic border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地所有数据)</button>
+                <button onclick="clearData()" class="w-full text-slate-400 italic border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地数据)</button>
             </div>
         </div>
     </main>
@@ -413,10 +409,9 @@
         let currentSpellingTrack = 'word';
         let spState = { queue: [], currentIndex: 0, step: 'INITIAL_BLIND', trace: [], completedLogs: [], stats: { total: 0, passed: 0, struggled: 0 }, lastWrongInput: '' };
         let isSpellingEditing = false; 
+        let activeHarvestObj = null; let editingId = null; 
 
-        let activeHarvestObj = null;
-        let editingId = null; 
-
+        // 绝对安全读取本地持久化设置
         const apiConfig = {
             getGhToken: () => localStorage.getItem('gh_token'),
             getGistId: () => localStorage.getItem('gh_gist_id'),
@@ -469,7 +464,7 @@
             if(el) el.classList.toggle('hidden');
         }
 
-        // ================= [战役 6] JST 00:00 自然日零点计算引擎 =================
+        // JST 00:00 自然日零点归笼
         function getNextJSTMidnight(days = 1) {
             const now = new Date();
             const utcMillis = now.getTime();
@@ -478,19 +473,24 @@
             
             jstDate.setUTCDate(jstDate.getUTCDate() + days);
             jstDate.setUTCHours(0, 0, 0, 0);
-            
             return jstDate.getTime() - jstOffsetMillis;
         }
 
         async function init() {
             updateTokenDisplay();
+            
+            // 确保页面一打开即可完全渲染本地保存的历史词库，绝不直接显示为0
             const localData = localStorage.getItem('prismaVocab');
-            if (localData) {
+            if (localData && localData !== '[]') {
                 vocabList = JSON.parse(localData);
                 migrateDataSchema(vocabList);
             }
             updateDashboard();
-            if (githubAPI.isConfigured()) await syncFromCloud();
+            
+            // 如果已配置云端同步，则进行拉取对齐
+            if (githubAPI.isConfigured()) {
+                await syncFromCloud();
+            }
 
             document.addEventListener('click', (e) => {
                 const popover = document.getElementById('inlinePopover');
@@ -529,6 +529,8 @@
             
             if(viewId === 'homeView') updateDashboard();
             if(viewId === 'dictionaryView') renderDictionary();
+            
+            // 设置视图进入时绝对呈现本地已存储的配置，杜绝清空错觉
             if(viewId === 'settingsView') {
                 document.getElementById('ghToken').value = apiConfig.getGhToken() || '';
                 document.getElementById('ghGistId').value = apiConfig.getGistId() || '';
@@ -557,16 +559,17 @@
         async function syncFromCloud() {
             if (!githubAPI.isConfigured()) return; updateStatus('正在同步云端...');
             const cloudData = await githubAPI.pull();
-            if (cloudData) {
+            if (cloudData && cloudData.length > 0) {
                 vocabList = cloudData;
                 migrateDataSchema(vocabList);
                 localStorage.setItem('prismaVocab', JSON.stringify(vocabList)); 
                 updateDashboard(); updateStatus('同步完成'); setTimeout(()=>updateStatus(''), 2000);
-            } else updateStatus('同步失败');
+            } else updateStatus('');
         }
 
         async function saveToCloud(silent = false) {
-            localStorage.setItem('prismaVocab', JSON.stringify(vocabList)); if (!githubAPI.isConfigured()) return;
+            localStorage.setItem('prismaVocab', JSON.stringify(vocabList)); 
+            if (!githubAPI.isConfigured()) return;
             if(!silent) updateStatus('保存中...'); const success = await githubAPI.push(vocabList);
             if(success) { updateStatus('已保存'); setTimeout(()=>updateStatus(''), 2000); }
         }
@@ -574,7 +577,6 @@
         function cleanPunc(str) { return str.replace(/[^\w\sáéíóúñÁÉÍÓÚÑüÜ¿¡]/gi, ''); }
         function removeAccent(str) { return str.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-        // ================= 复习引擎 =================
         function updateDashboard() {
             const now = Date.now(); 
             dueQueue = vocabList.filter(v => v.itemType !== 'sentence' && v.nextReview <= now && v.status !== 'pending');
@@ -582,7 +584,7 @@
             document.getElementById('totalCount').innerText = wordCount; 
             document.getElementById('dueCount').innerText = dueQueue.length;
             const startBtn = document.getElementById('startBtn'); startBtn.disabled = dueQueue.length === 0;
-            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日词汇已清零";
+            startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清零";
         }
 
         function renderCard() {
@@ -607,7 +609,6 @@
 
         function flipCard() { const card = document.getElementById('flashcard'); if (!card.classList.contains('is-flipped')) { card.classList.add('is-flipped'); document.getElementById('actionButtons').classList.remove('hidden'); } }
 
-        // [战役 6] JST 00:00 自然日归笼
         function processReview(quality) {
             const word = dueQueue[currentCardIndex];
             if (quality === 1) word.interval = 0;
@@ -616,13 +617,11 @@
             
             word.interval = Math.round(word.interval); 
             word.reviewCount = (word.reviewCount || 0) + 1;
-            
             word.nextReview = word.interval === 0 ? Date.now() : getNextJSTMidnight(word.interval);
             
             currentCardIndex++; renderCard(); saveToCloud(true); 
         }
 
-        // ================= 默写舱 =================
         function switchSpellingTrack(track) {
             currentSpellingTrack = track;
             document.getElementById('spellingSetup').classList.remove('hidden');
@@ -676,7 +675,7 @@
             }
             document.getElementById('spellDueCount').innerText = dueList.length;
             const startBtn = document.getElementById('spellStartBtn'); startBtn.disabled = dueList.length === 0;
-            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已全天清空";
+            startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已全天清清白白";
         }
 
         function startSpelling() {
@@ -847,7 +846,6 @@
             }
         }
 
-        // [战役 6] 支持当堂自愈轮回与 JST 归笼
         function finalizeSpellingWord(item, isPerfect) {
             const w = item.wordObj; w.spellReviewCount++;
             if (isPerfect) {
@@ -906,10 +904,10 @@
             lines.forEach(line => {
                 const isChinese = /[\u4e00-\u9fa5]/.test(line);
                 if (isChinese && (/词汇量|共\d+词|Actividad/i.test(line))) return;
-                if (!isChinese) { if (tempEs) stagingItems.push({ es: tempEs, zh: '（暂无译文，直接盲听盲敲）' }); tempEs = line; } 
+                if (!isChinese) { if (tempEs) stagingItems.push({ es: tempEs, zh: '（暂无译文，盲听盲敲）' }); tempEs = line; } 
                 else { if (tempEs) { stagingItems.push({ es: tempEs, zh: line }); tempEs = null; } }
             });
-            if (tempEs) stagingItems.push({ es: tempEs, zh: '（暂无译文，直接盲听盲敲）' });
+            if (tempEs) stagingItems.push({ es: tempEs, zh: '（暂无译文，盲听盲敲）' });
             if (stagingItems.length === 0) return showToast('未识别到有效西语句子');
             
             dicState.sourceName = sourceName;
@@ -977,7 +975,7 @@
                 fillBlankArea.classList.add('hidden'); fillBlankArea.classList.remove('flex'); harvestArea.classList.add('hidden'); harvestArea.classList.remove('flex');
                 
                 userText.value = ''; userText.disabled = false;
-                userText.placeholder = dicState.mode === 'BLIND_FIRST' ? "盲听音频并键入完整西班牙语..." : "错词修补完成！请盲听音频再次复验全句...";
+                userText.placeholder = dicState.mode === 'BLIND_FIRST' ? "盲听音频并键入完整西班牙语..." : "错词修补完成！盲听音频再次复验全句...";
                 stateBadge.innerText = dicState.mode === 'BLIND_FIRST' ? '盲听首试' : '全句复验';
                 stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono italic tracking-wider bg-slate-100 text-slate-600";
                 
@@ -999,7 +997,7 @@
                 stateBadge.innerText = '语境采词'; stateBadge.className = "text-xs px-2 py-0.5 rounded font-mono italic tracking-wider bg-teal-50 text-teal-800";
                 
                 feedbackBanner.className = "mb-6 text-sm font-normal p-3 rounded-md text-center bg-teal-50 text-teal-800 block border border-teal-200";
-                feedbackBanner.innerText = currentItem.passedFirstTry ? "完美直通！点击句中任意生词查词，将经历 AI 洗炼后入库" : "校准通过！句中生词皆可点击一键纳入特训舱";
+                feedbackBanner.innerText = currentItem.passedFirstTry ? "直通！点击句中任意生词查词，自动净化入库" : "校准通过！句中生词皆可点击一键纳入特训舱";
                 feedbackBanner.classList.remove('hidden');
                 
                 saveSentenceToVocab(currentItem.es, currentItem.zh, dicState.sourceName);
@@ -1009,7 +1007,7 @@
             }
         }
 
-        // ================= [战役 1, 2, 3] AI 智能质检与存量大扫除 =================
+        // ================= AI 智能质检与单条更新洗炼 =================
         async function runAIQualityControl(text, isSentence, sourceName) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
@@ -1045,7 +1043,7 @@ Rules:
             const cleanEs = esText.trim();
             let existing = vocabList.find(v => (v.itemType === 'sentence') && v.word === cleanEs);
             if (!existing) {
-                showToast('后台通过 AI 洗炼全句释义...');
+                showToast('后台洗炼全句释义...');
                 const qcResult = await runAIQualityControl(cleanEs, true, sourceName);
                 vocabList.push({
                     id: Date.now(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText, 
@@ -1055,33 +1053,20 @@ Rules:
             }
         }
 
-        async function cleanLegacyData() {
+        // 精细化单条更新：替代原来的全量洗白，静悄悄不发光
+        async function updateSingleItem(id) {
             const apiKey = apiConfig.getDsToken();
-            if (!apiKey) return showToast('请先在设置页配置 DeepSeek API Key！');
+            if (!apiKey) return showToast('请先在设置页配置 API Key');
             
-            const brokenItems = vocabList.filter(v => 
-                !v.meaning_en || v.meaning_en === '-' || 
-                (v.meaning_zh && v.meaning_zh.includes('安全网')) || 
-                v.status === 'pending' ||
-                (v.word && v.word === v.word.toLowerCase() && /^(lucía|sofía|españa|madrid|nieves|pedro|teresa)$/i.test(v.word))
-            );
+            const item = vocabList.find(v => v.id === id);
+            if (!item) return;
             
-            if (brokenItems.length === 0) return showToast('✓ 当前词库极度健康，无需洗净！');
-            if (!confirm(`检测到 ${brokenItems.length} 条存量缺陷/待整改数据，是否立即调用 API 执行一键净化与大扫除？`)) return;
+            showToast(`正在更新: ${item.word}...`);
+            const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2');
+            item.word = qc.word; item.meaning_en = qc.meaning_en; item.meaning_zh = qc.meaning_zh; item.status = 'active';
+            if(item.itemType === 'sentence') item.example = ''; 
             
-            const btn = document.getElementById('btnCleanLegacy');
-            if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner mr-1"></span> 洗白中...'; }
-            
-            let count = 0;
-            for (let item of brokenItems) {
-                showToast(`正在洗涤 (${++count}/${brokenItems.length}): ${item.word}...`);
-                const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2');
-                item.word = qc.word; item.meaning_en = qc.meaning_en; item.meaning_zh = qc.meaning_zh; item.status = 'active';
-                if(item.itemType === 'sentence') item.example = ''; 
-            }
-            
-            await saveToCloud(true); renderDictionary(); showToast(`🎉 成功洗白并修复 ${brokenItems.length} 条存量数据！`);
-            if(btn) { btn.disabled = false; btn.innerText = '✨ 一键洗白存量数据'; }
+            await saveToCloud(true); renderDictionary(); showToast(`更新完成: ${item.word}`);
         }
 
         function buildHarvestSentenceUI(esText, zhText) {
@@ -1259,7 +1244,7 @@ Rules:
             navigator.clipboard.writeText(exportText).then(() => showToast('分析报告已复制')).catch(() => showToast('复制失败'));
         }
 
-        // ================= [战役 4 & 5] 库区矩阵渲染与文字三定律 =================
+        // ================= 库区矩阵渲染与文字三定律 =================
         function startEdit(id) { editingId = id; renderDictionary(); }
         function cancelEdit() { editingId = null; renderDictionary(); }
         async function saveEdit(id) {
@@ -1337,8 +1322,8 @@ Rules:
                             <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-normal" rows="${isSentence ? 2 : 1}">${item.word}</textarea>
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
-                            <input type="text" id="edit_en_${item.id}" value="${item.meaning_en || ''}" class="w-full border border-slate-300 rounded p-1 text-sm outline-none text-slate-900 font-normal" placeholder="EN 核心 (黑色)">
-                            <input type="text" id="edit_zh_${item.id}" value="${item.meaning_zh || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 italic" placeholder="ZH 补充 (灰色斜体)">
+                            <input type="text" id="edit_en_${item.id}" value="${item.meaning_en || ''}" class="w-full border border-slate-300 rounded p-1 text-sm outline-none text-slate-900 font-normal" placeholder="EN 核心">
+                            <input type="text" id="edit_zh_${item.id}" value="${item.meaning_zh || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 italic" placeholder="ZH 补充">
                         </td>
                         <td class="px-5 py-3 align-top">
                             ${isSentence ? '<span class="text-xs text-slate-400 italic">（句法条目留空）</span>' : `<textarea id="edit_ex_${item.id}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-400 italic" rows="2" placeholder="西语语境">${item.example || ''}</textarea>`}
@@ -1367,8 +1352,9 @@ Rules:
                             <span class="text-[11px] font-mono text-slate-400 italic block mt-1.5 select-all">${item.source || 'Prisma Core'}</span>
                         </td>
                         <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs">
-                            <button onclick="startEdit(${item.id})" class="text-slate-400 hover:text-slate-800 transition">编辑</button>
-                            <button onclick="deleteWord(${item.id})" class="text-slate-400 hover:text-rose-700 transition">删除</button>
+                            <button onclick="updateSingleItem(${item.id})" class="text-slate-400 italic hover:text-slate-700 transition" title="触发单条洗炼与更新">更新</button>
+                            <button onclick="startEdit(${item.id})" class="text-slate-400 italic hover:text-slate-700 transition">编辑</button>
+                            <button onclick="deleteWord(${item.id})" class="text-slate-400 italic hover:text-rose-700 transition">删除</button>
                         </td>
                     `;
                 }
@@ -1395,7 +1381,7 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('成功复制 Markdown 练习清单！')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清白'); } }
+        async function clearDictionary() { if(confirm('确定清空所有库存数据吗？系统配置将保留。')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('库存已清空'); } }
         async function deleteWord(id) { if(confirm('确定从此库中删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('系统配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
