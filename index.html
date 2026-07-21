@@ -45,7 +45,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.7</span>
+            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.7.1</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
@@ -168,7 +168,7 @@
                         <div id="spellAnswerArea" class="w-full text-center mt-5 hidden flex flex-col items-center">
                             <div id="spellUserDiffBox" class="mb-3 text-center hidden">
                                 <span class="text-[11px] text-slate-500 block mb-0.5">你的提交:</span>
-                                <span id="spellUserWrongInput" class="text-base font-medium text-slate-400 line-through decoration-amber-500/80 decoration-wavy block"></span>
+                                <span id="spellUserWrongInput" class="text-base block leading-relaxed"></span>
                             </div>
 
                             <div class="text-xs text-slate-500 mb-1">规范参考答案:</div>
@@ -581,6 +581,8 @@
             startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清空";
         }
 
+        function startReview() { showView('reviewView', true); }
+
         function renderCard() {
             if (currentCardIndex >= dueQueue.length) { showToast('今日复习完成'); showView('homeView'); return; }
             const item = dueQueue[currentCardIndex];
@@ -760,7 +762,7 @@
                 document.getElementById('spellCorrectAnswer').innerText = item.word;
                 
                 if (spState.lastWrongInput) {
-                    document.getElementById('spellUserWrongInput').innerText = spState.lastWrongInput;
+                    document.getElementById('spellUserWrongInput').innerHTML = renderSpellTokenDiff(spState.lastWrongInput, item.word);
                     userDiffBox.classList.remove('hidden');
                 } else {
                     userDiffBox.classList.add('hidden');
@@ -806,6 +808,29 @@
             saveToCloud(true); showToast(`已纳入 "${lemma}" 到生词特训！`);
             btnEl.className = "text-xs px-2.5 py-1.5 bg-teal-50 text-teal-800 rounded border border-teal-200 font-normal transition cursor-default";
             btnEl.innerHTML = `✓ 已存入: ${lemma}`;
+        }
+
+        function renderSpellTokenDiff(userInput, target) {
+            const tWords = target.split(/\s+/);
+            const iWords = userInput.split(/\s+/);
+            let html = '';
+            const maxLen = Math.max(tWords.length, iWords.length);
+            for (let i = 0; i < maxLen; i++) {
+                const tw = i < tWords.length ? cleanPunc(tWords[i]) : '';
+                const iw = i < iWords.length ? cleanPunc(iWords[i]) : '';
+                const rawInput = i < iWords.length ? iWords[i] : '';
+                if (!iw) continue;
+                if (!tw) {
+                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + rawInput + '</span> ';
+                } else if (tw.toLowerCase() === iw.toLowerCase()) {
+                    html += '<span class="text-slate-400 mr-1">' + rawInput + '</span> ';
+                } else if (removeAccent(tw).toLowerCase() === removeAccent(iw).toLowerCase()) {
+                    html += '<span class="text-amber-700 font-medium underline decoration-wavy mr-1">' + rawInput + '</span> ';
+                } else {
+                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + rawInput + '</span> ';
+                }
+            }
+            return html.trim();
         }
 
         function checkSpelling() {
