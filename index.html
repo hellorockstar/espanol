@@ -601,7 +601,7 @@
         }
 
         function cleanPunc(str) { return str.replace(/[^\w\sáéíóúñÁÉÍÓÚÑüÜ¿¡]/gi, ''); }
-        function removeAccent(str) { return str.normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+        function removeAccent(str) { return str.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
         function updateDashboard() {
             const now = Date.now(); 
@@ -930,19 +930,10 @@
 
         function exportSpellingPrompt() {
             const today = new Date().toISOString().split('T')[0];
-            let exportText = `[Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})]
-日期: ${today}
-总数: ${spState.stats.total} | 直通: ${spState.stats.passed} | 纠缠: ${spState.stats.struggled}
-
-【交互轨迹】
-`;
+            let exportText = `[Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})]\n日期: ${today}\n总数: ${spState.stats.total} | 直通: ${spState.stats.passed} | 纠缠: ${spState.stats.struggled}\n\n【交互轨迹】\n`;
             spState.completedLogs.forEach((log, idx) => {
-                exportText += `${idx + 1}. 目标: ${log.target} (EN: ${log.en || '-'} | ZH: ${log.zh || '-'})
-   - 连胜: ${log.streak}
-`;
-                log.trace.forEach(t => exportText += `     ${t}
-`); exportText += `
-`;
+                exportText += `${idx + 1}. 目标: ${log.target} (EN: ${log.en || '-'} | ZH: ${log.zh || '-'})\n   - 连胜: ${log.streak}\n`;
+                log.trace.forEach(t => exportText += `     ${t}\n`); exportText += `\n`;
             });
             navigator.clipboard.writeText(exportText).then(() => showToast('分析轨迹报告已复制')).catch(() => showToast('复制失败'));
         }
@@ -968,12 +959,10 @@
             }
             document.getElementById('dicSource').value = sourceName;
 
-            let lines = rawText.replace(/(Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/gi, '').replace(/([.!?。！？])\s*/g, "$1
-").split(/?
-/).map(l => l.trim()).filter(l => l.length > 0);
+            let lines = rawText.replace(/(Pista\s*\d+|轨道\s*[一二三四五六七八九十\d]+)/gi, '').replace(/([.!?。！？])\s*/g, "$1\n").split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
             stagingItems = []; let tempEs = null;
             lines.forEach(line => {
-                const isChinese = /[一-龥]/.test(line);
+                const isChinese = /[\u4e00-\u9fa5]/.test(line);
                 if (isChinese && (/词汇量|共\d+词|Actividad/i.test(line))) return;
                 if (!isChinese) { if (tempEs) stagingItems.push({ es: tempEs, zh: '（暂无译文，盲听盲敲）' }); tempEs = line; } 
                 else { if (tempEs) { stagingItems.push({ es: tempEs, zh: line }); tempEs = null; } }
@@ -1193,8 +1182,7 @@ Rules:
                         model: 'deepseek-v4-flash',
                         messages: [
                             { role: 'system', content: 'You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON: "lemma" (base form), "pos", "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).' },
-                            { role: 'user', content: `Word: "${word}"
-Sentence: "${sentenceEs}"` }
+                            { role: 'user', content: `Word: "${word}"\nSentence: "${sentenceEs}"` }
                         ], response_format: { type: "json_object" }
                     })
                 });
@@ -1321,20 +1309,10 @@ Sentence: "${sentenceEs}"` }
 
         function exportDictationPrompt() {
             const today = new Date().toISOString().split('T')[0];
-            let exportText = `[Dictation-Report]
-日期: ${today}
-来源: ${dicState.sourceName}
-总数: ${dicState.stats.total} | 直通: ${dicState.stats.perfect} | 修补: ${dicState.stats.repaired}
-
-【诊断错词库 (共 ${dicState.todayErrorsRecord.length} 个)】
-`;
-            if (dicState.todayErrorsRecord.length === 0) exportText += `- 完美直通，无拼写出入。
-`;
-            else dicState.todayErrorsRecord.forEach((word, i) => exportText += `${i + 1}. ${word}
-`);
-            exportText += `
-【AI 助教深度教研请求】
-请作为西班牙语教研组长，针对我今天听写中错漏的这些单词，指出它们在连读（省音、变音、弱读）或变位拼写规则上的核心痛点，提供英文优先解释。`;
+            let exportText = `[Dictation-Report]\n日期: ${today}\n来源: ${dicState.sourceName}\n总数: ${dicState.stats.total} | 直通: ${dicState.stats.perfect} | 修补: ${dicState.stats.repaired}\n\n【诊断错词库 (共 ${dicState.todayErrorsRecord.length} 个)】\n`;
+            if (dicState.todayErrorsRecord.length === 0) exportText += `- 完美直通，无拼写出入。\n`;
+            else dicState.todayErrorsRecord.forEach((word, i) => exportText += `${i + 1}. ${word}\n`);
+            exportText += `\n【AI 助教深度教研请求】\n请作为西班牙语教研组长，针对我今天听写中错漏的这些单词，指出它们在连读（省音、变音、弱读）或变位拼写规则上的核心痛点，提供英文优先解释。`;
             navigator.clipboard.writeText(exportText).then(() => showToast('分析报告已复制')).catch(() => showToast('复制失败'));
         }
 
@@ -1460,27 +1438,17 @@ Sentence: "${sentenceEs}"` }
             if (list.length === 0) return showToast('筛选列表为空！');
             
             const filterSource = document.getElementById('dictSourceFilter') ? document.getElementById('dictSourceFilter').value : 'all';
-            let md = `# Prisma 智能教研复习清单
-筛选范围: ${filterSource === 'all' ? '全部' : filterSource} | 数量: ${list.length} 项
-
-`;
+            let md = `# Prisma 智能教研复习清单\n筛选范围: ${filterSource === 'all' ? '全部' : filterSource} | 数量: ${list.length} 项\n\n`;
             
             list.forEach((v, idx) => {
-                md += `${idx + 1}. **${v.word}**
-`;
-                if(v.meaning_en) md += `   - EN: ${v.meaning_en}
-`;
-                if(v.meaning_zh) md += `   - ZH: ${v.meaning_zh}
-`;
-                if(v.example) md += `   - Example: "${v.example}"
-`;
-                if(v.source) md += `   - Source: [${v.source}]
-`;
-                md += `
-`;
+                md += `${idx + 1}. **${v.word}**\n`;
+                if(v.meaning_en) md += `   - EN: ${v.meaning_en}\n`;
+                if(v.meaning_zh) md += `   - ZH: ${v.meaning_zh}\n`;
+                if(v.example) md += `   - Example: "${v.example}"\n`;
+                if(v.source) md += `   - Source: [${v.source}]\n`;
+                md += `\n`;
             });
-            md += `--- 
-请基于以上筛选出的词汇/句法，为我生成一份定制版测试练习。`;
+            md += `--- \n请基于以上筛选出的词汇/句法，为我生成一份定制版测试练习。`;
             navigator.clipboard.writeText(md).then(() => showToast('复制成功')).catch(() => showToast('复制失败'));
         }
         
