@@ -800,12 +800,13 @@
                 labelEl.innerText = spState.step === 'INITIAL_BLIND' ? "盲打测试" : "抹除后盲打复验";
             } else if (spState.step === 'COPY_WITH_ANSWER') {
                 answerArea.classList.remove('hidden'); 
-                document.getElementById('spellCorrectAnswer').innerText = item.word;
                 
                 if (spState.lastWrongInput) {
+                    document.getElementById('spellCorrectAnswer').innerHTML = renderSpellCorrectDiff(spState.lastWrongInput, item.word);
                     document.getElementById('spellUserWrongInput').innerHTML = renderSpellTokenDiff(spState.lastWrongInput, item.word);
                     userDiffBox.classList.remove('hidden');
                 } else {
+                    document.getElementById('spellCorrectAnswer').innerText = item.word;
                     userDiffBox.classList.add('hidden');
                 }
 
@@ -869,6 +870,29 @@
                     html += '<span class="text-amber-700 font-medium underline decoration-wavy mr-1">' + rawInput + '</span> ';
                 } else {
                     html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + rawInput + '</span> ';
+                }
+            }
+            return html.trim();
+        }
+
+        function renderSpellCorrectDiff(userInput, target) {
+            const tWords = target.split(/\s+/);
+            const iWords = userInput.split(/\s+/);
+            let html = '';
+            const maxLen = Math.max(tWords.length, iWords.length);
+            for (let i = 0; i < maxLen; i++) {
+                const tw = i < tWords.length ? cleanPunc(tWords[i]) : '';
+                const iw = i < iWords.length ? cleanPunc(iWords[i]) : '';
+                const rawTarget = i < tWords.length ? tWords[i] : '';
+                if (!tw) continue;
+                if (!iw) {
+                    html += '<span class="text-rose-600 font-medium mr-1">' + rawTarget + '</span> ';
+                } else if (tw.toLowerCase() === iw.toLowerCase()) {
+                    html += '<span class="text-slate-900 mr-1">' + rawTarget + '</span> ';
+                } else if (removeAccent(tw).toLowerCase() === removeAccent(iw).toLowerCase()) {
+                    html += '<span class="text-amber-600 font-medium mr-1">' + rawTarget + '</span> ';
+                } else {
+                    html += '<span class="text-rose-600 font-medium mr-1">' + rawTarget + '</span> ';
                 }
             }
             return html.trim();
