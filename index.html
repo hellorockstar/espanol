@@ -699,7 +699,7 @@
         function updateSpellingDashboard() {
             const now = Date.now(); let dueList = []; let lockedCount = 0; let lockedHtml = '';
             if (currentSpellingTrack === 'word') {
-                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && v.reviewCount > 0 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             } else {
                 const allDueSentences = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
                 allDueSentences.forEach(s => {
@@ -720,7 +720,7 @@
 
         function startSpelling() {
             const now = Date.now(); let dueList = [];
-            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && v.reviewCount > 0 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             else dueList = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now)).filter(s => !checkSentenceLock(s).isLocked);
             if (dueList.length === 0) return;
 
