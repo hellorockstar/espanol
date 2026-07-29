@@ -542,8 +542,11 @@
                     }
                 }
                 if (w.itemType === 'sentence' && w.example === w.word) w.example = "";
+                if (w.reviewCount === undefined) {
+                    w.reviewCount = 0; w.interval = 0; w.nextReview = Date.now();
+                }
                 if (w.spellReviewCount === undefined) {
-                    w.spellReviewCount = 0; w.spellMistakeCount = 0; w.spellStreak = 0; 
+                    w.spellReviewCount = 0; w.spellMistakeCount = 0; w.spellStreak = 0;
                     w.spellInterval = 0; w.spellNextReview = Date.now();
                 }
             });
