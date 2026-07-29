@@ -340,6 +340,8 @@
                     <span class="text-slate-200">|</span>
                     <button onclick="exportFilteredDictionary()" class="text-xs text-slate-500 hover:text-slate-800 transition font-normal">复制</button>
                     <span class="text-slate-200">|</span>
+                    <button id="deleteSelectedBtn" onclick="deleteSelected()" class="text-xs text-rose-500 hover:text-rose-700 transition font-normal hidden">删除已选 (<span id="selectedCount">0</span>)</button>
+                    <span id="batchSep" class="text-slate-200 hidden">|</span>
                     <button onclick="clearDictionary()" class="text-xs text-slate-400 hover:text-rose-600 transition font-normal">清空</button>
                 </div>
             </div>
@@ -348,6 +350,7 @@
                 <table class="min-w-full text-left text-sm">
                     <thead class="sticky top-0 bg-slate-50/90 backdrop-blur border-b border-slate-100 z-10 text-[11px] text-slate-500 font-normal tracking-wider font-mono">
                         <tr>
+                            <th class="px-3 py-3 font-normal w-8"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()" class="cursor-pointer rounded" title="全选/取消全选"></th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">西文内容</th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">EN 核心 / ZH 补充</th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">句法语境 (EXAMPLE)</th>
@@ -394,7 +397,7 @@
     <div id="toast" class="fixed bottom-10 bg-slate-900 text-white text-xs px-5 py-3 rounded-full opacity-0 transition-opacity pointer-events-none z-50 shadow-lg"></div>
 
     <script>
-        let vocabList = []; let dueQueue = []; let currentCardIndex = 0; 
+        let vocabList = []; let dueQueue = []; let currentCardIndex = 0; let selectedIds = new Set();
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json";
         
         let stagingItems = [];
@@ -1409,10 +1412,12 @@ Rules:
             
             sortedList.forEach((item) => {
                 const isSentence = item.itemType === 'sentence';
+                const isSelected = selectedIds.has(item.id);
                 const tr = document.createElement('tr');
-                
+
                 if (editingId === item.id) {
                     tr.innerHTML = `
+                        <td class="px-3 py-3 align-top"></td>
                         <td class="px-5 py-3 align-top">
                             <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-medium shadow-sm" rows="${isSentence ? 2 : 1}">${item.word}</textarea>
                         </td>
@@ -1434,6 +1439,7 @@ Rules:
                     `;
                 } else {
                     tr.innerHTML = `
+                        <td class="px-3 py-3.5 align-top"><input type="checkbox" class="dict-checkbox" data-id="${item.id}" onchange="toggleSelectItem(${item.id}, this)" ${isSelected ? 'checked' : ''} class="cursor-pointer rounded"></td>
                         <td class="px-5 py-3.5 font-medium text-slate-900 align-top whitespace-normal min-w-[150px] text-base">${item.word}</td>
                         <td class="px-5 py-3.5 align-top whitespace-normal min-w-[150px]">
                             <div class="font-normal text-slate-900 text-sm mb-0.5">${item.meaning_en || '-'}</div>
@@ -1455,6 +1461,7 @@ Rules:
                 }
                 tbody.appendChild(tr);
             });
+            updateBatchUI();
         }
 
         function exportFilteredDictionary() {
@@ -1476,8 +1483,12 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('复制成功')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { vocabList = []; renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
-        async function deleteWord(id) { if(confirm('确定删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
+        async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
+        async function deleteWord(id) { if(confirm('确定删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
+        function toggleSelectItem(id, checkbox) { if (checkbox.checked) selectedIds.add(id); else selectedIds.delete(id); updateBatchUI(); }
+        function toggleSelectAll() { const allCb = document.getElementById('selectAllCheckbox'); const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleIds = new Set(); checkboxes.forEach(cb => { const id = parseInt(cb.dataset.id); visibleIds.add(id); if (allCb.checked) { cb.checked = true; selectedIds.add(id); } else { cb.checked = false; selectedIds.delete(id); } }); updateBatchUI(); }
+        function updateBatchUI() { const count = selectedIds.size; const btn = document.getElementById('deleteSelectedBtn'); const sep = document.getElementById('batchSep'); const countEl = document.getElementById('selectedCount'); const allCb = document.getElementById('selectAllCheckbox'); if (btn) { if (count > 0) { btn.classList.remove('hidden'); if (sep) sep.classList.remove('hidden'); countEl.textContent = count; const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleCount = checkboxes.length; if (allCb) allCb.indeterminate = count > 0 && count < visibleCount; if (allCb) allCb.checked = count > 0 && count === visibleCount; } else { btn.classList.add('hidden'); if (sep) sep.classList.add('hidden'); countEl.textContent = '0'; if (allCb) { allCb.checked = false; allCb.indeterminate = false; } } } }
+        async function deleteSelected() { if (selectedIds.size === 0) return; if (!confirm(`确定删除已选的 ${selectedIds.size} 个条目吗？此操作不可撤销。`)) return; vocabList = vocabList.filter(v => !selectedIds.has(v.id)); selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已删除'); }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
         
@@ -1490,6 +1501,7 @@ Rules:
                     let missingCount = 0;
                     inputData.forEach(w => {
                         if(!w.itemType) w.itemType = 'word';
+                        if(w.sentence && !w.example) w.example = w.sentence;
                         if(w.spellReviewCount === undefined) { w.spellReviewCount=0; w.spellMistakeCount=0; w.spellStreak=0; w.spellInterval=0; w.spellNextReview=Date.now(); }
                         if(!w.source || w.source.trim() === '' || w.source === '-') {
                             w.source = defaultSource;
