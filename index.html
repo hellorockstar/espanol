@@ -49,6 +49,7 @@
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
+            <button id="autoReadToggle" onclick="toggleAutoRead()" class="text-xs text-slate-400 hover:text-slate-700 transition font-mono" title="自动朗读开关">🔊</button>
         </div>
         <nav class="flex items-center space-x-5 text-sm font-normal text-slate-500 overflow-x-auto hide-scrollbar py-1">
             <button onclick="showView('dictationView')" class="hover:text-slate-900 transition whitespace-nowrap">听写</button>
@@ -85,7 +86,10 @@
         <div class="card-container w-full h-80 relative mb-8" onclick="flipCard()">
             <div id="flashcard" class="card w-full h-full cursor-pointer shadow-sm rounded-xl">
                 <div class="card-face bg-white rounded-xl flex items-center justify-center p-8 border border-slate-200">
-                    <h2 id="cardWord" class="text-3xl font-medium text-slate-900 text-center leading-normal select-none">单词</h2>
+                    <div class="flex items-center justify-center gap-3">
+                            <h2 id="cardWord" class="text-3xl font-medium text-slate-900 leading-normal select-none">单词</h2>
+                            <button onclick="event.stopPropagation(); speakWord(document.getElementById('cardWord').innerText);" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition text-slate-400 hover:text-slate-700" title="朗读">🔊</button>
+                        </div>
                 </div>
                 <div class="card-back card-face bg-white rounded-xl flex flex-col items-center justify-center p-8 border border-slate-200">
                     <span class="text-[10px] uppercase font-mono text-slate-400 mb-1" id="cardSourceBadge">SOURCE</span>
@@ -153,7 +157,9 @@
                     <p class="text-[11px] text-slate-400 uppercase tracking-widest mb-1 font-mono" id="spellStateLabel">盲打测试</p>
                     <span class="text-[11px] text-slate-400 font-mono mb-3" id="spellSourceDisplay"></span>
                     <h2 id="spellTargetEN" class="text-2xl font-normal text-slate-900 mb-2 text-center leading-normal">English</h2>
+                    <span id="spellTargetWord" class="hidden"></span>
                     
+                    <button onclick="speakWord(document.getElementById('spellTargetWord') ? document.getElementById('spellTargetWord').innerText : '')" class="mb-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition text-slate-400 hover:text-slate-700" title="听发音">🔊</button>
                     <div onclick="toggleZhReveal(event, 'spellTargetZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-xs transition mb-8 select-none">
                         <span>[+ ZH 提示]</span>
                         <span id="spellTargetZH" class="hidden font-normal text-slate-600 ml-1">中文</span>
@@ -398,6 +404,7 @@
 
     <script>
         let vocabList = []; let dueQueue = []; let currentCardIndex = 0; let selectedIds = new Set();
+        let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json";
         
         let stagingItems = [];
@@ -455,6 +462,24 @@
         }
         function updateStatus(msg) { document.getElementById('syncStatus').innerText = msg; }
 
+        function speakWord(text) {
+            if (!text) return;
+            speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'es-ES';
+            utter.rate = 0.85;
+            speechSynthesis.speak(utter);
+        }
+        function updateAutoReadUI() {
+            const btn = document.getElementById('autoReadToggle');
+            if (btn) btn.innerText = autoReadEnabled ? '🔊' : '🔇';
+        }
+        function toggleAutoRead() {
+            autoReadEnabled = !autoReadEnabled;
+            localStorage.setItem('autoRead', autoReadEnabled ? 'on' : 'off');
+            updateAutoReadUI();
+        }
+
         function toggleZhReveal(event, targetId) {
             if(event) event.stopPropagation();
             const el = document.getElementById(targetId);
@@ -480,8 +505,8 @@
                 vocabList = JSON.parse(localData);
                 migrateDataSchema(vocabList);
             }
-            updateDashboard();
-            
+            updateDashboard(); updateAutoReadUI();
+
             if (githubAPI.isConfigured()) {
                 await syncFromCloud();
             }
@@ -624,21 +649,31 @@
         function renderCard() {
             if (currentCardIndex >= dueQueue.length) { showToast('今日复习完成'); showView('homeView'); return; }
             const item = dueQueue[currentCardIndex];
+            const card = document.getElementById('flashcard');
+
+            // 瞬间复位卡片到正面（跳过 0.5s 动画），避免上一张的答案面在动画中闪现
+            card.style.transition = 'none';
+            card.classList.remove('is-flipped');
+            document.getElementById('actionButtons').classList.add('hidden');
+
             document.getElementById('reviewProgress').innerText = `${currentCardIndex + 1}/${dueQueue.length}`;
             document.getElementById('reviewCountBadge').innerText = item.reviewCount || 0;
-            
+
             document.getElementById('cardSourceBadge').innerText = item.source || 'Prisma Core';
             document.getElementById('cardWord').innerText = item.word;
             document.getElementById('cardMeaningEN').innerText = item.meaning_en || item.meaning_zh || '-';
-            
+
             const zhEl = document.getElementById('cardMeaningZH');
             zhEl.innerText = item.meaning_zh || '（暂无对应中文）';
             zhEl.classList.add('hidden');
-            
+
             document.getElementById('cardExample').innerText = item.example ? `"${item.example}"` : '（暂无句法语境）';
-            
-            const card = document.getElementById('flashcard'); card.classList.remove('is-flipped');
-            document.getElementById('actionButtons').classList.add('hidden');
+
+            // 强制浏览器完成无动画的复位，再恢复过渡效果供手动翻牌使用
+            card.offsetHeight;
+            card.style.transition = '';
+
+            if (autoReadEnabled) speakWord(item.word);
         }
 
         // [NEW in v2.7.2] 升级版 flipCard：未翻则翻；已翻则点击卡片任意非交互区域默认为“记得”，直接进入下一张
@@ -789,6 +824,7 @@
             document.getElementById('spellSourceDisplay').innerText = item.source || 'Prisma Core';
             
             document.getElementById('spellTargetEN').innerText = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
+            document.getElementById('spellTargetWord').innerText = item.word;
             
             const zhEl = document.getElementById('spellTargetZH');
             zhEl.innerText = item.meaning_zh || '（无中文提示）'; zhEl.classList.add('hidden');
@@ -832,6 +868,7 @@
                     safetyNetArea.classList.remove('hidden');
                 }
             }
+            if (autoReadEnabled && spState.step === 'INITIAL_BLIND') speakWord(item.word);
             setTimeout(() => inputEl.focus(), 50);
         }
 
