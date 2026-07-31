@@ -45,7 +45,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v2.7.2</span>
+            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v28</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
@@ -156,10 +156,11 @@
                 <div id="spellingDisplayArea" class="w-full flex flex-col items-center">
                     <p class="text-[11px] text-slate-400 uppercase tracking-widest mb-1 font-mono" id="spellStateLabel">盲打测试</p>
                     <span class="text-[11px] text-slate-400 font-mono mb-3" id="spellSourceDisplay"></span>
+                    <span id="spellTargetPOS" class="text-xs font-mono text-slate-400 mb-1 hidden"></span>
                     <h2 id="spellTargetEN" class="text-2xl font-normal text-slate-900 mb-2 text-center leading-normal">English</h2>
                     <span id="spellTargetWord" class="hidden"></span>
                     
-                    <button onclick="speakWord(document.getElementById('spellTargetWord') ? document.getElementById('spellTargetWord').innerText : '')" class="mb-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition text-slate-400 hover:text-slate-700" title="听发音">🔊</button>
+                    <button id="spellSpeakBtn" onclick="speakWord(document.getElementById('spellTargetWord') ? document.getElementById('spellTargetWord').innerText : '')" class="mb-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition text-slate-400 hover:text-slate-700 hidden" title="听发音">🔊</button>
                     <div onclick="toggleZhReveal(event, 'spellTargetZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-xs transition mb-8 select-none">
                         <span>[+ ZH 提示]</span>
                         <span id="spellTargetZH" class="hidden font-normal text-slate-600 ml-1">中文</span>
@@ -393,7 +394,8 @@
             <input type="text" id="ghGistId" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
             <label class="block text-xs font-normal text-slate-500 mb-2">DeepSeek API Key (V4-Flash)</label>
             <input type="password" id="dsToken" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
-            <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-8">保存配置</button>
+            <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-4">保存配置</button>
+            <button onclick="fillMissingPOS()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-8">补全词性标注 (存量词)</button>
             <div class="border-t border-slate-100 pt-6">
                 <button onclick="clearData()" class="w-full text-slate-500 border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地数据)</button>
             </div>
@@ -574,6 +576,8 @@
                     w.spellReviewCount = 0; w.spellMistakeCount = 0; w.spellStreak = 0;
                     w.spellInterval = 0; w.spellNextReview = Date.now();
                 }
+                if (w.rememberStreak === undefined) w.rememberStreak = 0;
+                if (w.pos === undefined) w.pos = '';
             });
         }
 
@@ -692,12 +696,16 @@
             if (quality === 1) word.interval = 0;
             else if (quality === 3) word.interval = word.interval === 0 ? 1 : word.interval * 1.5;
             else word.interval = word.interval === 0 ? 1 : (word.interval === 1 ? 3 : word.interval * 2);
-            
-            word.interval = Math.round(word.interval); 
+
+            word.interval = Math.round(word.interval);
             word.reviewCount = (word.reviewCount || 0) + 1;
             word.nextReview = word.interval === 0 ? Date.now() : getNextJSTMidnight(word.interval);
-            
-            currentCardIndex++; renderCard(); saveToCloud(true); 
+
+            // 默写准入：连续"记得"(quality=0) 计数，模糊/忘记归零
+            if (quality === 0) word.rememberStreak = (word.rememberStreak || 0) + 1;
+            else word.rememberStreak = 0;
+
+            currentCardIndex++; renderCard(); saveToCloud(true);
         }
 
         function switchSpellingTrack(track) {
@@ -737,7 +745,7 @@
         function updateSpellingDashboard() {
             const now = Date.now(); let dueList = []; let lockedCount = 0; let lockedHtml = '';
             if (currentSpellingTrack === 'word') {
-                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && v.reviewCount > 0 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             } else {
                 const allDueSentences = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
                 allDueSentences.forEach(s => {
@@ -758,7 +766,7 @@
 
         function startSpelling() {
             const now = Date.now(); let dueList = [];
-            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && v.reviewCount > 0 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             else dueList = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now)).filter(s => !checkSentenceLock(s).isLocked);
             if (dueList.length === 0) return;
 
@@ -823,6 +831,10 @@
             document.getElementById('spellStreakBadge').innerText = item.spellStreak || 0;
             document.getElementById('spellSourceDisplay').innerText = item.source || 'Prisma Core';
             
+            const posEl = document.getElementById('spellTargetPOS');
+            if (item.pos && item.itemType !== 'sentence') {
+                posEl.innerText = `[${item.pos}]`; posEl.classList.remove('hidden');
+            } else { posEl.classList.add('hidden'); }
             document.getElementById('spellTargetEN').innerText = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
             document.getElementById('spellTargetWord').innerText = item.word;
             
@@ -839,9 +851,11 @@
             
             if (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER') {
                 answerArea.classList.add('hidden'); userDiffBox.classList.add('hidden');
+                document.getElementById('spellSpeakBtn').classList.add('hidden');
                 labelEl.innerText = spState.step === 'INITIAL_BLIND' ? "盲打测试" : "抹除后盲打复验";
             } else if (spState.step === 'COPY_WITH_ANSWER') {
-                answerArea.classList.remove('hidden'); 
+                answerArea.classList.remove('hidden');
+                document.getElementById('spellSpeakBtn').classList.remove('hidden');
                 
                 if (spState.lastWrongInput) {
                     document.getElementById('spellCorrectAnswer').innerHTML = renderSpellCorrectDiff(spState.lastWrongInput, item.word);
@@ -868,7 +882,7 @@
                     safetyNetArea.classList.remove('hidden');
                 }
             }
-            if (autoReadEnabled && spState.step === 'INITIAL_BLIND') speakWord(item.word);
+            // 盲打阶段不朗读——TTS 在答案揭示后才触发
             setTimeout(() => inputEl.focus(), 50);
         }
 
@@ -883,8 +897,10 @@
             
             if (!found) {
                 vocabList.push({
-                    id: Date.now(), word: lemma, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh, example: sentenceObj.word, source: qcResult.source, itemType: 'word', status: qcResult.status,
-                    nextReview: Date.now(), interval: 0, reviewCount: 0, spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
+                    id: Date.now(), word: lemma, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh, pos: qcResult.pos || '',
+                    example: sentenceObj.word, source: qcResult.source, itemType: 'word', status: qcResult.status,
+                    nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
+                    spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
                 });
             } else { 
                 found.spellStreak = 0; found.spellNextReview = Date.now(); 
@@ -947,11 +963,16 @@
             const isCorrect = cleanPunc(inputVal).toLowerCase() === cleanPunc(target).toLowerCase();
             
             if (spState.step === 'INITIAL_BLIND') {
-                if (isCorrect) { currentItem.trace.push(`[盲打]: ${inputVal} (通过)`); finalizeSpellingWord(currentItem, true); } 
-                else { 
-                    currentItem.trace.push(`[盲打错]: ${inputVal}`); 
-                    spState.lastWrongInput = inputVal; 
-                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); 
+                if (isCorrect) {
+                    currentItem.trace.push(`[盲打]: ${inputVal} (通过)`);
+                    finalizeSpellingWord(currentItem, true);
+                    if (autoReadEnabled) speakWord(target);
+                }
+                else {
+                    currentItem.trace.push(`[盲打错]: ${inputVal}`);
+                    spState.lastWrongInput = inputVal;
+                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem();
+                    if (autoReadEnabled) speakWord(target);
                 }
             } else if (spState.step === 'COPY_WITH_ANSWER') {
                 if (isCorrect) { 
@@ -1146,7 +1167,7 @@ Rules:
 2. Remove any numbering tags like "1.", "Pista 2", etc. from the text itself.
 3. Provide precise EN Core (English) and ZH Supplement (Chinese) meanings. Do NOT hard-translate Spanish names into Chinese phonetics.
 4. Return strictly JSON with keys: "clean_text", "meaning_en", "meaning_zh".`
-                : `You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON with keys: "clean_text" (base form/lemma), "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).`;
+                : `You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON with keys: "clean_text" (base form/lemma), "pos" (abbreviated: "v."/"n.m."/"n.f."/"adj."/"adv."/"pron."/"prep."/"conj."), "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).`;
 
             try {
                 const res = await fetch('https://api.deepseek.com/chat/completions', {
@@ -1164,9 +1185,9 @@ Rules:
                     let currentUsage = parseInt(localStorage.getItem('ds_token_usage') || '0'); localStorage.setItem('ds_token_usage', currentUsage + data.usage.total_tokens); updateTokenDisplay();
                 }
                 const resObj = JSON.parse(data.choices[0].message.content);
-                return { word: resObj.clean_text || resObj.lemma || text.trim(), meaning_en: resObj.meaning_en || '', meaning_zh: resObj.meaning_zh || '', source: sourceName, status: 'active' };
+                return { word: resObj.clean_text || resObj.lemma || text.trim(), pos: resObj.pos || '', meaning_en: resObj.meaning_en || '', meaning_zh: resObj.meaning_zh || '', source: sourceName, status: 'active' };
             } catch (e) {
-                return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
+                return { word: text.trim(), pos: '', meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
             }
         }
 
@@ -1177,9 +1198,10 @@ Rules:
                 showToast('后台洗炼全句释义...');
                 const qcResult = await runAIQualityControl(cleanEs, true, sourceName);
                 vocabList.push({
-                    id: Date.now(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText, 
-                    example: '', source: qcResult.source, itemType: 'sentence', status: qcResult.status,
-                    nextReview: Date.now(), interval: 0, reviewCount: 0, spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
+                    id: Date.now(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText,
+                    example: '', source: qcResult.source, itemType: 'sentence', status: qcResult.status, pos: '',
+                    nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
+                    spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
                 }); saveToCloud(true); renderDictionary();
             }
         }
@@ -1268,7 +1290,7 @@ Rules:
             document.getElementById('popoverLoading').classList.add('hidden'); document.getElementById('popoverResult').classList.remove('hidden');
             document.getElementById('popLemma').innerText = data.lemma; document.getElementById('popPos').innerText = data.pos;
             document.getElementById('popMeaningEN').innerText = data.meaning_en; document.getElementById('popMeaningZH').innerText = data.meaning_zh;
-            activeHarvestObj = { word: data.lemma, meaning_en: data.meaning_en, meaning_zh: data.meaning_zh, example: sentence, source: dicState.sourceName, targetSpan: targetSpan };
+            activeHarvestObj = { word: data.lemma, meaning_en: data.meaning_en, meaning_zh: data.meaning_zh, pos: data.pos || '', example: sentence, source: dicState.sourceName, targetSpan: targetSpan };
         }
 
         async function confirmHarvestWord() {
@@ -1276,9 +1298,10 @@ Rules:
             const targetWord = activeHarvestObj.word;
             if (!vocabList.find(v => (v.itemType !== 'sentence') && cleanPunc(v.word).toLowerCase() === targetWord.toLowerCase())) {
                 vocabList.push({
-                    id: Date.now(), word: targetWord, meaning_en: activeHarvestObj.meaning_en, meaning_zh: activeHarvestObj.meaning_zh, 
+                    id: Date.now(), word: targetWord, meaning_en: activeHarvestObj.meaning_en, meaning_zh: activeHarvestObj.meaning_zh, pos: activeHarvestObj.pos || '',
                     example: activeHarvestObj.example, source: activeHarvestObj.source, itemType: 'word', status: 'active',
-                    nextReview: Date.now(), interval: 0, reviewCount: 0, spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
+                    nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
+                    spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
                 }); saveToCloud(true);
             }
             showToast(`已纳入 "${targetWord}" 到特训舱！`);
@@ -1389,6 +1412,8 @@ Rules:
             const item = vocabList.find(v => v.id === id);
             if (item) {
                 item.word = document.getElementById(`edit_word_${id}`).value.trim();
+                const posEl = document.getElementById(`edit_pos_${id}`);
+                if (posEl) item.pos = posEl.value.trim();
                 item.meaning_en = document.getElementById(`edit_en_${id}`).value.trim();
                 item.meaning_zh = document.getElementById(`edit_zh_${id}`).value.trim();
                 item.source = document.getElementById(`edit_src_${id}`).value.trim();
@@ -1462,6 +1487,7 @@ Rules:
                             <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-medium shadow-sm" rows="${isSentence ? 2 : 1}">${item.word}</textarea>
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
+                            ${!isSentence ? `<input type="text" id="edit_pos_${item.id}" value="${item.pos || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="词性 (n.m./v./adj.)">` : ''}
                             <input type="text" id="edit_en_${item.id}" value="${item.meaning_en || ''}" class="w-full border border-slate-300 rounded p-1 text-sm outline-none text-slate-900 font-normal shadow-sm" placeholder="EN 核心">
                             <input type="text" id="edit_zh_${item.id}" value="${item.meaning_zh || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="ZH 补充">
                         </td>
@@ -1480,7 +1506,10 @@ Rules:
                 } else {
                     tr.innerHTML = `
                         <td class="px-3 py-3.5 align-top"><input type="checkbox" class="dict-checkbox" data-id="${item.id}" onchange="toggleSelectItem(${item.id}, this)" ${isSelected ? 'checked' : ''} class="cursor-pointer rounded"></td>
-                        <td class="px-5 py-3.5 font-medium text-slate-900 align-top whitespace-normal min-w-[150px] text-base">${item.word}</td>
+                        <td class="px-5 py-3.5 font-medium text-slate-900 align-top whitespace-normal min-w-[150px] text-base">
+                            ${item.word}
+                            ${item.pos && !isSentence ? `<span class="text-[11px] font-mono text-slate-400 ml-1.5">${item.pos}</span>` : ''}
+                        </td>
                         <td class="px-5 py-3.5 align-top whitespace-normal min-w-[150px]">
                             <div class="font-normal text-slate-900 text-sm mb-0.5">${item.meaning_en || '-'}</div>
                             <div class="text-xs text-slate-500">${item.meaning_zh || ''}</div>
@@ -1512,7 +1541,7 @@ Rules:
             let md = `# Prisma 智能教研复习清单\n筛选范围: ${filterSource === 'all' ? '全部' : filterSource} | 数量: ${list.length} 项\n\n`;
             
             list.forEach((v, idx) => {
-                md += `${idx + 1}. **${v.word}**\n`;
+                md += `${idx + 1}. **${v.word}**${v.pos ? ` *(${v.pos})*` : ''}\n`;
                 if(v.meaning_en) md += `   - EN: ${v.meaning_en}\n`;
                 if(v.meaning_zh) md += `   - ZH: ${v.meaning_zh}\n`;
                 if(v.example) md += `   - Example: "${v.example}"\n`;
@@ -1532,6 +1561,47 @@ Rules:
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
         
+        async function fillMissingPOS() {
+            // 硬编码词性映射（来自 vocabulary.md 已知词，避免消耗 Token）
+            const KNOWN_POS = {
+                'inglés': 'n.m.', 'sevilla': 'n.f.', 'tú': 'pron.', 'cómo': 'adv.',
+                'bueno': 'adj.', 'buenos aires': 'n.f.', 'día': 'n.m.', 'bogotá': 'n.f.',
+                'colombia': 'n.f.', 'llamar': 'v.', 'apellido': 'n.m.', 'inventar': 'v.',
+                'dibujar': 'v.', 'escribir': 'v.', 'ejemplo': 'n.m.', 'personaje': 'n.m.',
+                'apellidar': 'v.', 'segundo': 'adj.', 'primero': 'adj.', 'deletrear': 'v.',
+                'deletreo': 'n.m.', 'quién': 'pron.', 'extranjero': 'adj.'
+            };
+
+            const wordItems = vocabList.filter(v => v.itemType !== 'sentence' && (!v.pos || v.pos === ''));
+            if (wordItems.length === 0) { showToast('所有词汇已有词性标注'); return; }
+
+            let filled = 0; let aiNeeded = [];
+            wordItems.forEach(w => {
+                const key = cleanPunc(w.word).toLowerCase();
+                if (KNOWN_POS[key]) { w.pos = KNOWN_POS[key]; filled++; }
+                else aiNeeded.push(w);
+            });
+
+            if (aiNeeded.length > 0) {
+                const apiKey = apiConfig.getDsToken();
+                if (apiKey) {
+                    showToast(`硬编码补全 ${filled} 个，AI 补全 ${aiNeeded.length} 个...`);
+                    for (const w of aiNeeded) {
+                        try {
+                            const qcResult = await runAIQualityControl(w.word, false, w.source || '');
+                            if (qcResult.pos) { w.pos = qcResult.pos; filled++; }
+                        } catch (e) { /* skip */ }
+                    }
+                } else {
+                    showToast(`已补全 ${filled} 个，${aiNeeded.length} 个需 API（请先配置 Key）`);
+                }
+            }
+
+            await saveToCloud(false);
+            showToast(`词性补全完成：${filled}/${wordItems.length} 个`);
+            renderDictionary();
+        }
+
         async function importJSON() {
             try {
                 const inputData = JSON.parse(document.getElementById('jsonInput').value.trim());
@@ -1543,6 +1613,8 @@ Rules:
                         if(!w.itemType) w.itemType = 'word';
                         if(w.sentence && !w.example) w.example = w.sentence;
                         if(w.spellReviewCount === undefined) { w.spellReviewCount=0; w.spellMistakeCount=0; w.spellStreak=0; w.spellInterval=0; w.spellNextReview=Date.now(); }
+                        if(w.rememberStreak === undefined) w.rememberStreak = 0;
+                        if(w.pos === undefined) w.pos = '';
                         if(!w.source || w.source.trim() === '' || w.source === '-') {
                             w.source = defaultSource;
                             missingCount++;
