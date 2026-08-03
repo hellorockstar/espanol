@@ -45,7 +45,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v29</span>
+            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v30</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
@@ -378,8 +378,9 @@
         <div class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm">
             <h2 class="text-lg font-medium text-slate-900 mb-4">JSON 批量导入</h2>
             <div class="mb-5 bg-slate-50 p-3.5 rounded-md border border-slate-100">
-                <label class="block text-xs font-normal text-slate-600 mb-1.5">防呆校验 · 默认出处标签：</label>
-                <input type="text" id="importDefaultSource" value="Nuevo Prisma A1-A2 Fusion" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-slate-400 text-slate-900 font-normal bg-white">
+                <label class="block text-xs font-normal text-slate-600 mb-1.5">未注明来源的条目将归属：</label>
+                <select id="importDefaultSource" onchange="toggleImportNewSource()" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-slate-400 text-slate-900 font-normal bg-white"></select>
+                <input type="text" id="importNewSource" class="hidden mt-2 w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-slate-400 text-slate-900 font-normal bg-white" placeholder="输入新来源名...">
             </div>
             <textarea id="jsonInput" class="w-full h-44 border border-slate-200 rounded-md p-4 text-xs font-mono mb-6 outline-none bg-slate-50 text-slate-900 font-normal" placeholder="粘贴 JSON 数组..."></textarea>
             <button onclick="importJSON()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base">导入并云端同步</button>
@@ -403,6 +404,19 @@
             </div>
         </div>
     </main>
+
+    <!-- 导入确认弹窗 -->
+    <div id="importModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl border border-slate-200">
+            <h3 class="text-base font-medium text-slate-900 mb-1">确认导入</h3>
+            <p class="text-xs text-slate-400 mb-4">导入前核对本次来源</p>
+            <div id="importModalSummary" class="text-sm text-slate-700 mb-5 bg-slate-50 p-3.5 rounded-md text-left"></div>
+            <div class="flex space-x-3">
+                <button id="importModalOk" onclick="confirmImportAction()" class="flex-1 bg-slate-900 text-white py-2.5 rounded-md text-sm font-medium transition hover:bg-slate-800">确认导入 <span class="text-[10px] text-slate-400 font-mono">Enter</span></button>
+                <button id="importModalCancel" onclick="cancelImportAction()" class="flex-1 bg-slate-100 text-slate-600 py-2.5 rounded-md text-sm font-medium transition hover:bg-slate-200">取消 <span class="text-[10px] text-slate-400 font-mono">Esc</span></button>
+            </div>
+        </div>
+    </div>
 
     <div id="toast" class="fixed bottom-10 bg-slate-900 text-white text-xs px-5 py-3 rounded-full opacity-0 transition-opacity pointer-events-none z-50 shadow-lg"></div>
 
@@ -521,6 +535,16 @@
                     popover.classList.add('hidden');
                 }
             });
+
+            // 导入确认弹窗键盘：Enter=确认，Esc=取消
+            document.addEventListener('keydown', (e) => {
+                const modal = document.getElementById('importModal');
+                if (modal.classList.contains('hidden')) return;
+                if (e.key === 'Escape') { e.preventDefault(); cancelImportAction(); }
+                else if (e.key === 'Enter') { e.preventDefault(); confirmImportAction(); }
+            });
+
+            renderImportSourceOptions();
 
             // [NEW in v2.7.2] 复习舱物理键盘快捷键映射 (Space/Enter=翻卡/记得, F/←=忘记, H/↓=模糊, →=记得)
             document.addEventListener('keydown', (e) => {
@@ -1661,10 +1685,63 @@ Rules:
             renderDictionary();
         }
 
+        // 导入确认弹窗控制
+        let pendingImportAction = null;
+        function showImportModal(summaryHtml, action) {
+            document.getElementById('importModalSummary').innerHTML = summaryHtml;
+            const modal = document.getElementById('importModal');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            pendingImportAction = action;
+            setTimeout(() => document.getElementById('importModalOk').focus(), 50);
+        }
+        function confirmImportAction() {
+            const modal = document.getElementById('importModal');
+            modal.classList.add('hidden'); modal.classList.remove('flex');
+            const action = pendingImportAction; pendingImportAction = null;
+            if (action) action();
+        }
+        function cancelImportAction() {
+            const modal = document.getElementById('importModal');
+            modal.classList.add('hidden'); modal.classList.remove('flex');
+            pendingImportAction = null;
+        }
+
+        // 来源下拉：固定常用 + 词库已有来源 + "新来源"入口（防手误造来源）
+        function renderImportSourceOptions() {
+            const sel = document.getElementById('importDefaultSource');
+            if (!sel) return;
+            const sources = new Set(['Nuevo Prisma A1-A2 Fusion', 'Duolingo']);
+            vocabList.forEach(v => { if (v.source && v.source.trim() && v.source.trim() !== '-') sources.add(v.source.trim()); });
+            const current = sel.value;
+            let html = '<option value="__new__">＋ 新来源…</option>';
+            Array.from(sources).sort().forEach(s => { html += `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`; });
+            sel.innerHTML = html;
+            if (current && current !== '__new__' && sources.has(current)) sel.value = current;
+            else if (sources.has('Nuevo Prisma A1-A2 Fusion')) sel.value = 'Nuevo Prisma A1-A2 Fusion';
+            toggleImportNewSource();
+        }
+        function toggleImportNewSource() {
+            const sel = document.getElementById('importDefaultSource');
+            const newInput = document.getElementById('importNewSource');
+            if (!sel || !newInput) return;
+            const isNew = sel.value === '__new__';
+            newInput.classList.toggle('hidden', !isNew);
+            if (isNew) setTimeout(() => newInput.focus(), 50);
+        }
+        function getImportDefaultSource() {
+            const sel = document.getElementById('importDefaultSource');
+            if (!sel) return 'Nuevo Prisma A1-A2 Fusion';
+            if (sel.value === '__new__') {
+                const v = document.getElementById('importNewSource').value.trim();
+                return v || 'Nuevo Prisma A1-A2 Fusion';
+            }
+            return sel.value;
+        }
+
         async function importJSON() {
             try {
                 let inputData = JSON.parse(document.getElementById('jsonInput').value.trim());
-                const defaultSource = document.getElementById('importDefaultSource').value.trim() || 'Nuevo Prisma A1-A2 Fusion';
+                const defaultSource = getImportDefaultSource();
 
                 if(Array.isArray(inputData)) {
                     // 字段初始化（新数据模型：word=页面形式主词，lemma=原形，form=变位标注）
@@ -1700,23 +1777,37 @@ Rules:
                     });
                     inputData = merged;
 
+                    // 统计本次来源分布（含未注明归属），不改动原始 source
+                    const sourceCounts = {};
                     let missingCount = 0;
                     inputData.forEach(w => {
-                        if(!w.source || w.source.trim() === '' || w.source === '-') {
-                            w.source = defaultSource;
-                            missingCount++;
-                        }
+                        const s = (w.source && w.source.trim() && w.source !== '-') ? w.source.trim() : null;
+                        if (s) sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+                        else missingCount++;
                     });
+                    const unmarkedLabel = `未注明（将归属「${defaultSource}」）`;
+                    if (missingCount > 0) sourceCounts[unmarkedLabel] = missingCount;
 
-                    if(missingCount > 0) {
-                        if(!confirm(`检测到 ${missingCount} 个条目未指明教材出处，自动赋予：【${defaultSource}】，继续？`)) return;
+                    let summaryHtml = `共 <b>${inputData.length}</b> 条：`;
+                    Object.entries(sourceCounts).forEach(([src, cnt]) => {
+                        summaryHtml += `<div class="mt-1">· ${src}（${cnt} 条）</div>`;
+                    });
+                    if (dupWords.length > 0) {
+                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">⚠️ 本批重复已合并：${dupWords.join('、')}</div>`;
                     }
 
-                    vocabList = vocabList.concat(inputData);
-                    migrateDataSchema(vocabList);
-                    await saveToCloud(false); document.getElementById('jsonInput').value = '';
-                    showToast(dupWords.length > 0 ? `导入成功，⚠️ 本批重复已合并：${dupWords.join('、')}` : '导入成功');
-                    showView('homeView');
+                    const doImport = async () => {
+                        inputData.forEach(w => {
+                            if(!w.source || w.source.trim() === '' || w.source === '-') w.source = defaultSource;
+                        });
+                        vocabList = vocabList.concat(inputData);
+                        migrateDataSchema(vocabList);
+                        await saveToCloud(false); document.getElementById('jsonInput').value = '';
+                        showToast(dupWords.length > 0 ? `导入成功，⚠️ 本批重复已合并：${dupWords.join('、')}` : '导入成功');
+                        showView('homeView');
+                    };
+
+                    showImportModal(summaryHtml, doImport);
                 } else { showToast('格式错误：必须是 JSON 数组'); }
             } catch (e) { showToast('JSON 解析失败'); }
         }
