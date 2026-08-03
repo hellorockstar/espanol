@@ -45,7 +45,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v28</span>
+            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v29</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
@@ -93,6 +93,7 @@
                 </div>
                 <div class="card-back card-face bg-white rounded-xl flex flex-col items-center justify-center p-8 border border-slate-200">
                     <span class="text-[10px] uppercase font-mono text-slate-400 mb-1" id="cardSourceBadge">SOURCE</span>
+                    <span id="cardLemmaInfo" class="text-xs font-mono text-slate-500 mb-1 hidden"></span>
                     <h2 id="cardMeaningEN" class="text-2xl font-normal text-slate-900 mb-3 text-center select-none">English</h2>
                     
                     <div onclick="toggleZhReveal(event, 'cardMeaningZH')" class="cursor-pointer inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-xs transition mb-6 select-none">
@@ -334,7 +335,7 @@
                     </select>
                     <span class="text-slate-200">|</span>
                     <select id="dictSourceFilter" onchange="renderDictionary()" class="text-xs border-0 bg-transparent text-slate-500 font-normal hover:text-slate-800 outline-none cursor-pointer max-w-[180px] truncate pr-4">
-                        <option value="all">全部课本</option>
+                        <option value="all">全部来源</option>
                     </select>
                     <span class="text-slate-200">|</span>
                     <div class="relative flex-1 md:w-48">
@@ -361,7 +362,8 @@
                             <th class="px-5 py-3 font-normal whitespace-nowrap">西文内容</th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">EN 核心 / ZH 补充</th>
                             <th class="px-5 py-3 font-normal whitespace-nowrap">句法语境 (EXAMPLE)</th>
-                            <th class="px-5 py-3 font-normal whitespace-nowrap">类型 / 等级出处</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">来源</th>
+                            <th class="px-5 py-3 font-normal whitespace-nowrap">Unit</th>
                             <th class="px-5 py-3 font-normal text-center whitespace-nowrap">操作</th>
                         </tr>
                     </thead>
@@ -377,7 +379,7 @@
             <h2 class="text-lg font-medium text-slate-900 mb-4">JSON 批量导入</h2>
             <div class="mb-5 bg-slate-50 p-3.5 rounded-md border border-slate-100">
                 <label class="block text-xs font-normal text-slate-600 mb-1.5">防呆校验 · 默认出处标签：</label>
-                <input type="text" id="importDefaultSource" value="Nuevo Prisma A1-A2" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-slate-400 text-slate-900 font-normal bg-white">
+                <input type="text" id="importDefaultSource" value="Nuevo Prisma A1-A2 Fusion" class="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:border-slate-400 text-slate-900 font-normal bg-white">
             </div>
             <textarea id="jsonInput" class="w-full h-44 border border-slate-200 rounded-md p-4 text-xs font-mono mb-6 outline-none bg-slate-50 text-slate-900 font-normal" placeholder="粘贴 JSON 数组..."></textarea>
             <button onclick="importJSON()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base">导入并云端同步</button>
@@ -556,16 +558,44 @@
         function migrateDataSchema(list) {
             list.forEach(w => {
                 if (!w.itemType) w.itemType = 'word';
-                
+
                 // 斩断历史冗余后缀，静默清洗数据
                 if (w.source) w.source = w.source.replace(/\s*-\s*听写(导入|段落)/g, '');
-                
+
+                // 存量 source 归一 + 拆分（幂等）：来源名只存 source，章节存 unit
+                if (typeof w.source === 'string' && w.source.trim() !== '') {
+                    let src = w.source.trim();
+                    // 处理 GEM 旧脏数据："…Fusion, Unit Duolingo"（Unit 后非数字）→ 来源其实是 Duolingo，unit 清空
+                    const badUnit = src.match(/,\s*Unit\s+(.+?)\s*$/i);
+                    if (badUnit && !/^\d+$/.test(badUnit[1].trim())) {
+                        w.source = badUnit[1].trim();
+                        if (w.unit === undefined) w.unit = '';
+                    } else {
+                        // 拆分 ", Unit N" 或 "- Pista N" 后缀到 unit
+                        const unitMatch = src.match(/,\s*Unit\s+(\d+)\s*$/i);
+                        if (unitMatch) {
+                            w.unit = 'Unit ' + unitMatch[1];
+                            src = src.replace(/,\s*Unit\s+\d+\s*$/i, '').trim();
+                        } else {
+                            const pistaMatch = src.match(/-\s*Pista\s+(\d+)\s*$/i);
+                            if (pistaMatch) {
+                                w.unit = 'Pista ' + pistaMatch[1];
+                                src = src.replace(/-\s*Pista\s+\d+\s*$/i, '').trim();
+                            }
+                        }
+                        // 统一来源名（手工写的 "Nuevo Prisma A1-A2" 与 "…Fusion" 归并为 Fusion）
+                        if (src === 'Nuevo Prisma A1-A2') src = 'Nuevo Prisma A1-A2 Fusion';
+                        w.source = src;
+                        if (w.unit === undefined) w.unit = '';
+                    }
+                }
+
                 if (!w.source || w.source.trim() === '') {
                     if (w.example && (w.example.includes('Prisma') || w.example.includes('Pista') || w.example.includes('自听写'))) {
-                        w.source = 'Nuevo Prisma A1-A2'; 
-                        if(w.itemType === 'sentence') w.example = ""; 
+                        w.source = 'Nuevo Prisma A1-A2 Fusion';
+                        if(w.itemType === 'sentence') w.example = "";
                     } else {
-                        w.source = 'Nuevo Prisma A1-A2';
+                        w.source = 'Nuevo Prisma A1-A2 Fusion';
                     }
                 }
                 if (w.itemType === 'sentence' && w.example === w.word) w.example = "";
@@ -578,6 +608,9 @@
                 }
                 if (w.rememberStreak === undefined) w.rememberStreak = 0;
                 if (w.pos === undefined) w.pos = '';
+                if (w.lemma === undefined) w.lemma = w.word;   // 主词=页面形式，原形存 lemma；存量原形词 lemma=word
+                if (w.form === undefined) w.form = '';         // 变位情况标注，原形词留空
+                if (w.unit === undefined) w.unit = '';
             });
         }
 
@@ -665,6 +698,11 @@
 
             document.getElementById('cardSourceBadge').innerText = item.source || 'Prisma Core';
             document.getElementById('cardWord').innerText = item.word;
+            const cardLemmaEl = document.getElementById('cardLemmaInfo');
+            if (item.itemType !== 'sentence' && item.lemma) {
+                cardLemmaEl.innerText = item.form ? `原形：${item.lemma} · ${item.form}` : `原形：${item.lemma}`;
+                cardLemmaEl.classList.remove('hidden');
+            } else { cardLemmaEl.classList.add('hidden'); }
             document.getElementById('cardMeaningEN').innerText = item.meaning_en || item.meaning_zh || '-';
 
             const zhEl = document.getElementById('cardMeaningZH');
@@ -832,8 +870,9 @@
             document.getElementById('spellSourceDisplay').innerText = item.source || 'Prisma Core';
             
             const posEl = document.getElementById('spellTargetPOS');
-            if (item.pos && item.itemType !== 'sentence') {
-                posEl.innerText = `[${item.pos}]`; posEl.classList.remove('hidden');
+            if (item.itemType !== 'sentence' && (item.pos || item.form)) {
+                posEl.innerText = item.pos ? `[${item.pos}]${item.form ? ' ' + item.form : ''}` : item.form;
+                posEl.classList.remove('hidden');
             } else { posEl.classList.add('hidden'); }
             document.getElementById('spellTargetEN').innerText = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
             document.getElementById('spellTargetWord').innerText = item.word;
@@ -898,12 +937,13 @@
             if (!found) {
                 vocabList.push({
                     id: Date.now(), word: lemma, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh, pos: qcResult.pos || '',
+                    lemma: lemma, form: '', unit: sentenceObj.unit || '',
                     example: sentenceObj.word, source: qcResult.source, itemType: 'word', status: qcResult.status,
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
                     spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
                 });
-            } else { 
-                found.spellStreak = 0; found.spellNextReview = Date.now(); 
+            } else {
+                found.spellStreak = 0; found.spellNextReview = Date.now();
                 if(!found.meaning_en && qcResult.meaning_en) found.meaning_en = qcResult.meaning_en;
             }
             saveToCloud(true); showToast(`已纳入 "${lemma}" 到生词特训！`);
@@ -1200,6 +1240,7 @@ Rules:
                 vocabList.push({
                     id: Date.now(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText,
                     example: '', source: qcResult.source, itemType: 'sentence', status: qcResult.status, pos: '',
+                    lemma: qcResult.word, form: '', unit: '',
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
                     spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
                 }); saveToCloud(true); renderDictionary();
@@ -1299,6 +1340,7 @@ Rules:
             if (!vocabList.find(v => (v.itemType !== 'sentence') && cleanPunc(v.word).toLowerCase() === targetWord.toLowerCase())) {
                 vocabList.push({
                     id: Date.now(), word: targetWord, meaning_en: activeHarvestObj.meaning_en, meaning_zh: activeHarvestObj.meaning_zh, pos: activeHarvestObj.pos || '',
+                    lemma: targetWord, form: '', unit: activeHarvestObj.unit || '',
                     example: activeHarvestObj.example, source: activeHarvestObj.source, itemType: 'word', status: 'active',
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
                     spellReviewCount: 0, spellMistakeCount: 0, spellStreak: 0, spellInterval: 0, spellNextReview: Date.now()
@@ -1414,6 +1456,12 @@ Rules:
                 item.word = document.getElementById(`edit_word_${id}`).value.trim();
                 const posEl = document.getElementById(`edit_pos_${id}`);
                 if (posEl) item.pos = posEl.value.trim();
+                const lemmaEl = document.getElementById(`edit_lemma_${id}`);
+                if (lemmaEl) item.lemma = lemmaEl.value.trim() || item.word;
+                const formEl = document.getElementById(`edit_form_${id}`);
+                if (formEl) item.form = formEl.value.trim();
+                const unitEl = document.getElementById(`edit_unit_${id}`);
+                if (unitEl) item.unit = unitEl.value.trim();
                 item.meaning_en = document.getElementById(`edit_en_${id}`).value.trim();
                 item.meaning_zh = document.getElementById(`edit_zh_${id}`).value.trim();
                 item.source = document.getElementById(`edit_src_${id}`).value.trim();
@@ -1439,7 +1487,7 @@ Rules:
                     }
                 });
                 const currentOpt = filterSourceEl.value;
-                filterSourceEl.innerHTML = '<option value="all">全部课本</option>' + 
+                filterSourceEl.innerHTML = '<option value="all">全部来源</option>' +
                     Array.from(sourcesSet).sort().map(s => `<option value="${s}" ${s===currentOpt?'selected':''}>${s}</option>`).join('');
             }
 
@@ -1454,10 +1502,11 @@ Rules:
             if (keyword) {
                 displayList = displayList.filter(v => {
                     const w = (v.word || '').toLowerCase();
+                    const lemma = (v.lemma || '').toLowerCase();
                     const en = (v.meaning_en || '').toLowerCase();
                     const zh = (v.meaning_zh || '').toLowerCase();
                     const ex = (v.example || '').toLowerCase();
-                    return w.includes(keyword) || en.includes(keyword) || zh.includes(keyword) || ex.includes(keyword);
+                    return w.includes(keyword) || lemma.includes(keyword) || en.includes(keyword) || zh.includes(keyword) || ex.includes(keyword);
                 });
             }
             return displayList;
@@ -1483,8 +1532,10 @@ Rules:
                 if (editingId === item.id) {
                     tr.innerHTML = `
                         <td class="px-3 py-3 align-top"></td>
-                        <td class="px-5 py-3 align-top">
+                        <td class="px-5 py-3 align-top space-y-1">
                             <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-medium shadow-sm" rows="${isSentence ? 2 : 1}">${item.word}</textarea>
+                            ${!isSentence ? `<input type="text" id="edit_lemma_${item.id}" value="${item.lemma || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="原形 (lemma)">` : ''}
+                            ${!isSentence ? `<input type="text" id="edit_form_${item.id}" value="${item.form || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="变位标注 (如: 简单过去时·第一人称)">` : ''}
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
                             ${!isSentence ? `<input type="text" id="edit_pos_${item.id}" value="${item.pos || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="词性 (n.m./v./adj.)">` : ''}
@@ -1496,7 +1547,10 @@ Rules:
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
                             <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium block w-max ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
-                            <input type="text" id="edit_src_${item.id}" value="${item.source || ''}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm mt-1" placeholder="出处">
+                            <input type="text" id="edit_src_${item.id}" value="${item.source || ''}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm mt-1" placeholder="来源">
+                        </td>
+                        <td class="px-5 py-3 align-top">
+                            <input type="text" id="edit_unit_${item.id}" value="${item.unit || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="Unit (如: Unit 1 / Pista 2)">
                         </td>
                         <td class="px-5 py-3 text-center align-top space-y-1.5">
                             <button onclick="saveEdit(${item.id})" class="block w-full text-white text-xs bg-slate-900 hover:bg-slate-800 py-1.5 rounded font-medium shadow-sm transition">保存</button>
@@ -1508,6 +1562,7 @@ Rules:
                         <td class="px-3 py-3.5 align-top"><input type="checkbox" class="dict-checkbox" data-id="${item.id}" onchange="toggleSelectItem(${item.id}, this)" ${isSelected ? 'checked' : ''} class="cursor-pointer rounded"></td>
                         <td class="px-5 py-3.5 font-medium text-slate-900 align-top whitespace-normal min-w-[150px] text-base">
                             ${item.word}
+                            ${!isSentence && item.lemma && item.lemma !== item.word ? `<span class="text-[11px] font-mono text-slate-400 block mt-0.5">${item.lemma}${item.form ? ' · ' + item.form : ''}</span>` : ''}
                             ${item.pos && !isSentence ? `<span class="text-[11px] font-mono text-slate-400 ml-1.5">${item.pos}</span>` : ''}
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-normal min-w-[150px]">
@@ -1520,6 +1575,9 @@ Rules:
                         <td class="px-5 py-3.5 align-top whitespace-nowrap">
                             <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium mr-1 ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
                             <span class="text-[11px] font-mono text-slate-500 block mt-1.5 select-all">${item.source || 'Prisma Core'}</span>
+                        </td>
+                        <td class="px-5 py-3.5 align-top whitespace-nowrap">
+                            ${item.unit ? `<span class="text-[11px] font-mono text-slate-500">${item.unit}</span>` : '<span class="text-[11px] font-mono text-slate-300">-</span>'}
                         </td>
                         <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs font-normal">
                             <button onclick="updateSingleItem(${item.id}, this)" class="text-teal-700 hover:text-teal-900 transition">更新</button>
@@ -1542,10 +1600,11 @@ Rules:
             
             list.forEach((v, idx) => {
                 md += `${idx + 1}. **${v.word}**${v.pos ? ` *(${v.pos})*` : ''}\n`;
+                if(v.lemma && v.lemma !== v.word && v.itemType !== 'sentence') md += `   - 原形: ${v.lemma}${v.form ? ` (${v.form})` : ''}\n`;
                 if(v.meaning_en) md += `   - EN: ${v.meaning_en}\n`;
                 if(v.meaning_zh) md += `   - ZH: ${v.meaning_zh}\n`;
                 if(v.example) md += `   - Example: "${v.example}"\n`;
-                if(v.source) md += `   - Source: [${v.source}]\n`;
+                if(v.source) md += `   - Source: [${v.source}]${v.unit ? ` / ${v.unit}` : ''}\n`;
                 md += `\n`;
             });
             md += `--- \n请基于以上筛选出的词汇/句法，为我生成一份定制版测试练习。`;
@@ -1604,30 +1663,60 @@ Rules:
 
         async function importJSON() {
             try {
-                const inputData = JSON.parse(document.getElementById('jsonInput').value.trim());
-                const defaultSource = document.getElementById('importDefaultSource').value.trim() || 'Nuevo Prisma A1-A2';
-                
+                let inputData = JSON.parse(document.getElementById('jsonInput').value.trim());
+                const defaultSource = document.getElementById('importDefaultSource').value.trim() || 'Nuevo Prisma A1-A2 Fusion';
+
                 if(Array.isArray(inputData)) {
-                    let missingCount = 0;
+                    // 字段初始化（新数据模型：word=页面形式主词，lemma=原形，form=变位标注）
                     inputData.forEach(w => {
                         if(!w.itemType) w.itemType = 'word';
                         if(w.sentence && !w.example) w.example = w.sentence;
                         if(w.spellReviewCount === undefined) { w.spellReviewCount=0; w.spellMistakeCount=0; w.spellStreak=0; w.spellInterval=0; w.spellNextReview=Date.now(); }
                         if(w.rememberStreak === undefined) w.rememberStreak = 0;
                         if(w.pos === undefined) w.pos = '';
+                        if(w.lemma === undefined) w.lemma = w.word || '';
+                        if(w.form === undefined) w.form = '';
+                        if(w.unit === undefined) w.unit = '';
+                    });
+
+                    // 同批去重：word 相同（忽略大小写/重音）仅保留一条；example 长的优先，相同保留先出现
+                    // 不同变位 word 不同 → 视为不同词条，不去重
+                    const seen = new Map();
+                    const merged = [];
+                    const dupWords = [];
+                    inputData.forEach(w => {
+                        const key = cleanPunc(w.word || '').toLowerCase();
+                        if (!key) { merged.push(w); return; }
+                        if (seen.has(key)) {
+                            const prev = seen.get(key);
+                            if ((w.example || '').length > (prev.example || '').length) {
+                                const idx = merged.indexOf(prev);
+                                merged[idx] = w; seen.set(key, w);
+                            }
+                            if (!dupWords.includes(w.word)) dupWords.push(w.word);
+                        } else {
+                            seen.set(key, w); merged.push(w);
+                        }
+                    });
+                    inputData = merged;
+
+                    let missingCount = 0;
+                    inputData.forEach(w => {
                         if(!w.source || w.source.trim() === '' || w.source === '-') {
                             w.source = defaultSource;
                             missingCount++;
                         }
                     });
-                    
+
                     if(missingCount > 0) {
                         if(!confirm(`检测到 ${missingCount} 个条目未指明教材出处，自动赋予：【${defaultSource}】，继续？`)) return;
                     }
-                    
-                    vocabList = vocabList.concat(inputData); 
+
+                    vocabList = vocabList.concat(inputData);
                     migrateDataSchema(vocabList);
-                    await saveToCloud(false); document.getElementById('jsonInput').value = ''; showToast('导入成功'); showView('homeView');
+                    await saveToCloud(false); document.getElementById('jsonInput').value = '';
+                    showToast(dupWords.length > 0 ? `导入成功，⚠️ 本批重复已合并：${dupWords.join('、')}` : '导入成功');
+                    showView('homeView');
                 } else { showToast('格式错误：必须是 JSON 数组'); }
             } catch (e) { showToast('JSON 解析失败'); }
         }
