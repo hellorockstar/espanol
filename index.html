@@ -395,8 +395,12 @@
             <input type="password" id="ghToken" class="w-full border border-slate-200 rounded-md p-3 mb-5 text-sm outline-none text-slate-900 font-normal">
             <label class="block text-xs font-normal text-slate-500 mb-2">GitHub Gist ID</label>
             <input type="text" id="ghGistId" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
-            <label class="block text-xs font-normal text-slate-500 mb-2">DeepSeek API Key (V4-Flash)</label>
-            <input type="password" id="dsToken" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal">
+            <label class="block text-xs font-normal text-slate-500 mb-2">API Key</label>
+            <input type="password" id="dsToken" class="w-full border border-slate-200 rounded-md p-3 mb-5 text-sm outline-none text-slate-900 font-normal" placeholder="粘贴你的 API Key（DeepSeek 或 OpenCode 均可）">
+            <label class="block text-xs font-normal text-slate-500 mb-2">API Base URL</label>
+            <input type="text" id="apiBaseUrl" class="w-full border border-slate-200 rounded-md p-3 mb-5 text-sm outline-none text-slate-900 font-normal" placeholder="https://api.deepseek.com/chat/completions">
+            <label class="block text-xs font-normal text-slate-500 mb-2">模型 (Model)</label>
+            <input type="text" id="apiModel" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal" placeholder="deepseek-v4-flash">
             <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-4">保存配置</button>
             <button onclick="fillMissingPOS()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-8">补全词性标注 (存量词)</button>
             <div class="border-t border-slate-100 pt-6">
@@ -438,6 +442,9 @@
             getGhToken: () => localStorage.getItem('gh_token'),
             getGistId: () => localStorage.getItem('gh_gist_id'),
             getDsToken: () => localStorage.getItem('ds_token'),
+            // v32：API 可配置化。缺省回退 DeepSeek 直连，存量用户零感知
+            getBaseUrl: () => localStorage.getItem('apiBaseUrl') || 'https://api.deepseek.com/chat/completions',
+            getModel: () => localStorage.getItem('apiModel') || 'deepseek-v4-flash',
         };
 
         const githubAPI = {
@@ -480,14 +487,45 @@
         }
         function updateStatus(msg) { document.getElementById('syncStatus').innerText = msg; }
 
+        // ===== TTS 加固 (v31) =====
+        // 浏览器 TTS 引擎空闲约 15s 后会自动关闭，后续 speak() 静默失败（复习"先有声音后无声"根因）
+        // 三件套：显式选西语 voice + cancel→speak 防竞态延迟 + 保活看门狗 + onerror 重试
+        let ttsVoices = [];
+        function loadTTSVoices() { try { ttsVoices = speechSynthesis.getVoices() || []; } catch(e) { ttsVoices = []; } }
+        loadTTSVoices();
+        if (typeof speechSynthesis !== 'undefined' && 'onvoiceschanged' in speechSynthesis) {
+            speechSynthesis.onvoiceschanged = loadTTSVoices;
+        }
+        function pickSpanishVoice() {
+            if (!ttsVoices.length) loadTTSVoices();
+            const es = ttsVoices.filter(v => /^es/i.test(v.lang));
+            return es.find(v => /Mónica|Lucía|Paulina|Marisol|Jorge|Elena/i.test(v.name)) || es[0] || null;
+        }
         function speakWord(text) {
             if (!text) return;
-            speechSynthesis.cancel();
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'es-ES';
-            utter.rate = 0.85;
-            speechSynthesis.speak(utter);
+            try {
+                speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'es-ES';
+                utter.rate = 0.85;
+                const voice = pickSpanishVoice();
+                if (voice) utter.voice = voice;
+                utter.onerror = (e) => {
+                    // 非主动取消的错误：重置引擎后重试一次
+                    if (e.error && e.error !== 'canceled' && e.error !== 'interrupted') {
+                        setTimeout(() => { try { speechSynthesis.cancel(); speechSynthesis.speak(utter); } catch(_) {} }, 200);
+                    }
+                };
+                // cancel 后立即 speak 有竞态（Safari 尤甚），延迟 60ms 让其稳定
+                setTimeout(() => { try { speechSynthesis.speak(utter); } catch(_) {} }, 60);
+            } catch(e) {}
         }
+        // 保活看门狗：每 10s 唤醒一次，防止引擎空闲关闭
+        setInterval(() => {
+            try {
+                if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.resume();
+            } catch(e) {}
+        }, 10000);
         function updateAutoReadUI() {
             const btn = document.getElementById('autoReadToggle');
             if (btn) btn.innerText = autoReadEnabled ? '🔊' : '🔇';
@@ -653,6 +691,8 @@
                 document.getElementById('ghToken').value = apiConfig.getGhToken() || '';
                 document.getElementById('ghGistId').value = apiConfig.getGistId() || '';
                 document.getElementById('dsToken').value = apiConfig.getDsToken() || '';
+                document.getElementById('apiBaseUrl').value = apiConfig.getBaseUrl();
+                document.getElementById('apiModel').value = apiConfig.getModel();
             }
             if(viewId === 'dictationView') resetDictationUI();
             
@@ -1234,10 +1274,10 @@ Rules:
                 : `You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON with keys: "clean_text" (base form/lemma), "pos" (abbreviated: "v."/"n.m."/"n.f."/"adj."/"adv."/"pron."/"prep."/"conj."), "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).`;
 
             try {
-                const res = await fetch('https://api.deepseek.com/chat/completions', {
+                const res = await fetch(apiConfig.getBaseUrl(), {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     body: JSON.stringify({
-                        model: 'deepseek-v4-flash',
+                        model: apiConfig.getModel(),
                         messages: [
                             { role: 'system', content: systemPrompt },
                             { role: 'user', content: `Input (${isSentence ? 'Sentence' : 'Word'}): "${text}"` }
@@ -1330,10 +1370,10 @@ Rules:
             if (cached) { renderPopoverContent(JSON.parse(cached), sentenceEs, targetSpan); return; }
 
             try {
-                const response = await fetch('https://api.deepseek.com/chat/completions', {
+                const response = await fetch(apiConfig.getBaseUrl(), {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     body: JSON.stringify({
-                        model: 'deepseek-v4-flash',
+                        model: apiConfig.getModel(),
                         messages: [
                             { role: 'system', content: 'You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON: "lemma" (base form), "pos", "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).' },
                             { role: 'user', content: `Word: "${word}"\nSentence: "${sentenceEs}"` }
@@ -1641,7 +1681,7 @@ Rules:
         function toggleSelectAll() { const allCb = document.getElementById('selectAllCheckbox'); const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleIds = new Set(); checkboxes.forEach(cb => { const id = parseInt(cb.dataset.id); visibleIds.add(id); if (allCb.checked) { cb.checked = true; selectedIds.add(id); } else { cb.checked = false; selectedIds.delete(id); } }); updateBatchUI(); }
         function updateBatchUI() { const count = selectedIds.size; const btn = document.getElementById('deleteSelectedBtn'); const sep = document.getElementById('batchSep'); const countEl = document.getElementById('selectedCount'); const allCb = document.getElementById('selectAllCheckbox'); if (btn) { if (count > 0) { btn.classList.remove('hidden'); if (sep) sep.classList.remove('hidden'); countEl.textContent = count; const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleCount = checkboxes.length; if (allCb) allCb.indeterminate = count > 0 && count < visibleCount; if (allCb) allCb.checked = count > 0 && count === visibleCount; } else { btn.classList.add('hidden'); if (sep) sep.classList.add('hidden'); countEl.textContent = '0'; if (allCb) { allCb.checked = false; allCb.indeterminate = false; } } } }
         async function deleteSelected() { if (selectedIds.size === 0) return; if (!confirm(`确定删除已选的 ${selectedIds.size} 个条目吗？此操作不可撤销。`)) return; vocabList = vocabList.filter(v => !selectedIds.has(v.id)); selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已删除'); }
-        async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
+        async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); localStorage.setItem('apiBaseUrl', document.getElementById('apiBaseUrl').value.trim()); localStorage.setItem('apiModel', document.getElementById('apiModel').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
         
         async function fillMissingPOS() {
