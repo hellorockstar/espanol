@@ -79,11 +79,11 @@
 
     <!-- 视图：复习 -->
     <main id="reviewView" class="w-full max-w-md flex-1 flex flex-col hidden">
-        <div class="flex justify-between text-xs text-slate-400 mb-6">
+        <div id="reviewTopBar" class="flex justify-between text-xs text-slate-400 mb-6">
             <span>进度: <span id="reviewProgress">1/5</span></span>
             <span>历史复习: <span id="reviewCountBadge">0</span> 次</span>
         </div>
-        <div class="card-container w-full h-80 relative mb-8" onclick="flipCard()">
+        <div id="reviewCardArea" class="card-container w-full h-80 relative mb-8" onclick="flipCard()">
             <div id="flashcard" class="card w-full h-full cursor-pointer shadow-sm rounded-xl">
                 <div class="card-face bg-white rounded-xl flex items-center justify-center p-8 border border-slate-200">
                     <div class="flex items-center justify-center gap-3">
@@ -112,7 +112,19 @@
             <button onclick="processReview(3)" class="bg-amber-50 text-amber-800 border border-amber-200 py-3.5 rounded-md text-sm font-medium transition hover:bg-amber-100" title="快捷键: H / ↓">模糊 (H)</button>
             <button onclick="processReview(0)" class="bg-teal-50 text-teal-800 border border-teal-200 py-3.5 rounded-md text-sm font-medium transition hover:bg-teal-100" title="快捷键: Space / Enter / →">记得 (Space)</button>
         </div>
-        <button onclick="showView('homeView')" class="mt-8 text-slate-400 text-xs text-center w-full py-2 hover:text-slate-600">结束本次复习</button>
+        <button onclick="endReviewEarly()" id="endReviewBtn" class="mt-8 text-slate-400 text-xs text-center w-full py-2 hover:text-slate-600">结束本次复习</button>
+
+        <!-- 复习完成总结界面 (v33) -->
+        <div id="reviewSummary" class="bg-white border border-slate-200 rounded-xl p-8 w-full hidden flex-col shadow-sm">
+            <h2 class="text-lg font-medium text-slate-900 mb-6 text-center">今日复习完成 ✓</h2>
+            <div class="bg-slate-50 p-4 rounded-md mb-6 text-center border border-slate-100">
+                <p class="text-sm text-slate-900" id="revStats">共 0 个词 | 记得 0 | 模糊 0 | 忘记 0</p>
+            </div>
+            <button onclick="exportReviewPrompt()" class="w-full btn-secondary py-3.5 rounded-md font-medium mb-4 text-sm">复制本次复习报告</button>
+            <div class="text-xs text-slate-400 mb-2">近 7 天复习报告</div>
+            <div id="revReportHistory" class="mb-6"></div>
+            <button onclick="showView('homeView')" class="w-full text-slate-500 text-sm py-2 hover:text-slate-800">返回首页</button>
+        </div>
     </main>
 
     <!-- 视图：默写训练舱 -->
@@ -223,6 +235,8 @@
                 <p class="text-sm text-slate-900" id="spellStats">共 0 项 | 一次通过 0 | 纠缠 0</p>
             </div>
             <button onclick="exportSpellingPrompt()" class="w-full btn-secondary py-3.5 rounded-md font-medium mb-4 text-sm">复制本次训练轨迹报告</button>
+            <div class="text-xs text-slate-400 mb-2">近 7 天默写报告</div>
+            <div id="spellReportHistory" class="mb-6"></div>
             <button onclick="showView('homeView')" class="w-full text-slate-500 text-sm py-2 hover:text-slate-800">返回首页</button>
         </div>
     </main>
@@ -302,6 +316,8 @@
                 <p class="text-xs text-teal-700 mt-2">✓ 本组句子已经携规范来源存入句法库</p>
             </div>
             <button onclick="exportDictationPrompt()" class="w-full btn-secondary py-3.5 rounded-md font-medium text-sm mb-4">复制错词 AI 教研解析请求</button>
+            <div class="text-xs text-slate-400 mb-2">近 7 天听写报告</div>
+            <div id="dicReportHistory" class="mb-6"></div>
             <button onclick="showView('homeView')" class="w-full text-sm text-slate-500 py-2 hover:text-slate-800">返回首页</button>
         </div>
     </main>
@@ -319,6 +335,18 @@
             <button id="popBtnHarvest" onclick="confirmHarvestWord()" class="w-full mt-3 bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded text-xs font-medium transition flex items-center justify-center space-x-1">
                 <span>+ 存入特训舱并绑定当堂语境</span>
             </button>
+        </div>
+    </div>
+
+    <!-- 报告历史查看浮层 (v33)：当前页内查看/复制近 7 天报告，不跳转 -->
+    <div id="reportPopover" onclick="closeReportPopover()" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+        <div onclick="event.stopPropagation()" class="bg-white rounded-xl p-5 w-full max-w-md shadow-xl border border-slate-200 max-h-[82vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3">
+                <h3 id="reportPopTitle" class="text-sm font-medium text-slate-900"></h3>
+                <button onclick="closeReportPopover()" class="text-slate-400 hover:text-slate-700 text-lg leading-none px-1 transition" title="关闭">✕</button>
+            </div>
+            <pre id="reportPopContent" class="flex-1 overflow-y-auto text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap bg-slate-50 p-3 rounded-md mb-4"></pre>
+            <button onclick="copyReportPopover()" class="w-full bg-slate-900 text-white py-2.5 rounded-md text-sm font-medium transition hover:bg-slate-800">复制报告全文</button>
         </div>
     </div>
 
@@ -427,15 +455,17 @@
     <script>
         let vocabList = []; let dueQueue = []; let currentCardIndex = 0; let selectedIds = new Set();
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
-        const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json";
+        const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
         let stagingItems = [];
         let dicState = { sourceName: '', items: [], currentIndex: 0, mode: 'BLIND_FIRST', currentErrors: [], todayErrorsRecord: [], stats: { total: 0, perfect: 0, repaired: 0 } };
 
         let currentSpellingTrack = 'word';
         let spState = { queue: [], currentIndex: 0, step: 'INITIAL_BLIND', trace: [], completedLogs: [], stats: { total: 0, passed: 0, struggled: 0 }, lastWrongInput: '' };
-        let isSpellingEditing = false; 
-        let activeHarvestObj = null; let editingId = null; 
+        let isSpellingEditing = false;
+        let activeHarvestObj = null; let editingId = null;
+        // v33：复习 session 逐词结果收集（结束/中途退出时存档为 Review-Report）
+        let revState = { items: [], stats: { total: 0, remembered: 0, fuzzy: 0, forgotten: 0 } };
 
         // 安全读取本地配置
         const apiConfig = {
@@ -447,6 +477,45 @@
             getModel: () => localStorage.getItem('apiModel') || 'deepseek-v4-flash',
         };
 
+        // ===== v33 报告系统 =====
+        // 本地日期（YYYY-MM-DD，本地时区）；注意勿用 toISOString 取日期——那是 UTC，UTC+8 凌晨会标错前一天
+        function localDateStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+        // 训练报告统一存储：localStorage 主源 + Gist 备份，保留最近 7 个自然日。
+        // generatedAt（ISO 时间戳，精确到秒）为唯一 ID，天然支持同天多次训练不冲突、排序、过期清理与 Mea 归档去重。
+        const reportStore = {
+            KEY: 'report_history',
+            load() { try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch(e) { return []; } },
+            save(list) { localStorage.setItem(this.KEY, JSON.stringify(list)); },
+            prune(list) {
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7); cutoff.setHours(0, 0, 0, 0);
+                return list.filter(r => r && r.generatedAt && new Date(r.generatedAt).getTime() >= cutoff.getTime());
+            },
+            merge(localList, cloudList) {
+                const seen = new Set(localList.map(r => r.generatedAt));
+                const merged = localList.slice();
+                (cloudList || []).forEach(r => { if (r && r.generatedAt && !seen.has(r.generatedAt)) merged.push(r); });
+                return this.prune(merged);
+            },
+            byType(type) { return this.load().filter(r => r.type === type).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt)); },
+            add(report) { this.save(this.merge(this.load(), [report])); },
+            getText(report) {
+                let t = `[${report.title}]\n日期: ${report.date}\n`;
+                if (report.source) t += `来源: ${report.source}\n`;
+                t += `${report.summary}\n\n【逐词/逐句记录】\n`;
+                (report.items || []).forEach((it, i) => {
+                    t += `${i + 1}. ${it.word}`;
+                    if (it.result) t += ` | 结果: ${it.result}`;
+                    if (it.streak !== undefined) t += ` | 连续: ${it.streak}`;
+                    if (it.en) t += ` | EN: ${it.en}`;
+                    if (it.zh) t += ` | ZH: ${it.zh}`;
+                    if (it.actualInput) t += ` | 实际输入: ${it.actualInput}`;
+                    t += '\n';
+                    (it.trace || []).slice(0, 20).forEach(tr => t += `    ${tr}\n`);
+                });
+                return t;
+            }
+        };
+
         const githubAPI = {
             isConfigured: () => apiConfig.getGhToken() && apiConfig.getGistId(),
             pull: async function() {
@@ -455,6 +524,10 @@
                     const res = await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, { headers: { 'Authorization': `token ${apiConfig.getGhToken()}` } });
                     if (!res.ok) throw new Error('读取失败'); const data = await res.json();
                     if (data.files[TOKEN_FILE_NAME]?.content) localStorage.setItem('ds_token_history', data.files[TOKEN_FILE_NAME].content);
+                    // v33：报告合并回本地（按 generatedAt 去重取并集，保留 7 天），本地新报告不被云端旧数据覆盖
+                    if (data.files[REPORTS_FILE_NAME]?.content) {
+                        try { reportStore.save(reportStore.merge(reportStore.load(), JSON.parse(data.files[REPORTS_FILE_NAME].content))); } catch(e) {}
+                    }
                     return data.files[FILE_NAME]?.content ? JSON.parse(data.files[FILE_NAME].content) : [];
                 } catch (e) { return null; }
             },
@@ -463,11 +536,12 @@
                 try {
                     await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, {
                         method: 'PATCH', headers: { 'Authorization': `token ${apiConfig.getGhToken()}` },
-                        body: JSON.stringify({ 
-                            files: { 
+                        body: JSON.stringify({
+                            files: {
                                 [FILE_NAME]: { content: JSON.stringify(dataArray, null, 2) },
-                                [TOKEN_FILE_NAME]: { content: localStorage.getItem('ds_token_history') || '{}' }
-                            } 
+                                [TOKEN_FILE_NAME]: { content: localStorage.getItem('ds_token_history') || '{}' },
+                                [REPORTS_FILE_NAME]: { content: JSON.stringify(reportStore.load(), null, 2) }
+                            }
                         })
                     }); return true;
                 } catch (e) { return false; }
@@ -745,10 +819,19 @@
             startBtn.innerText = dueQueue.length > 0 ? "开始复习" : "今日卡片已清空";
         }
 
-        function startReview() { showView('reviewView', true); }
+        function startReview() {
+            revState = { items: [], stats: { total: 0, remembered: 0, fuzzy: 0, forgotten: 0 } };
+            // 恢复训练界面（上次完成可能停留在总结界面）
+            document.getElementById('reviewTopBar').classList.remove('hidden');
+            document.getElementById('reviewCardArea').classList.remove('hidden');
+            document.getElementById('actionButtons').classList.remove('hidden');
+            document.getElementById('endReviewBtn').classList.remove('hidden');
+            document.getElementById('reviewSummary').classList.add('hidden'); document.getElementById('reviewSummary').classList.remove('flex');
+            showView('reviewView', true);
+        }
 
         function renderCard() {
-            if (currentCardIndex >= dueQueue.length) { showToast('今日复习完成'); showView('homeView'); return; }
+            if (currentCardIndex >= dueQueue.length) { archiveReviewReport(); showReviewSummary(); return; }
             const item = dueQueue[currentCardIndex];
             const card = document.getElementById('flashcard');
 
@@ -807,7 +890,46 @@
             if (quality === 0) word.rememberStreak = (word.rememberStreak || 0) + 1;
             else word.rememberStreak = 0;
 
+            // v33：收集本次复习逐词结果（供结束总结界面/报告存档）
+            const resultMap = { 0: '记得', 1: '忘记', 3: '模糊' };
+            revState.stats.total++;
+            if (quality === 0) revState.stats.remembered++;
+            else if (quality === 3) revState.stats.fuzzy++;
+            else revState.stats.forgotten++;
+            revState.items.push({ word: word.word, result: resultMap[quality] || '记得', streak: word.rememberStreak, en: word.meaning_en, zh: word.meaning_zh });
+
             currentCardIndex++; renderCard(); saveToCloud(true);
+        }
+
+        // ===== v33 复习完成流程 =====
+        function buildReviewReport() {
+            return {
+                generatedAt: new Date().toISOString(), type: 'review', title: 'Review-Report',
+                date: localDateStr(),
+                summary: `复习 ${revState.stats.total} 个词 | 记得 ${revState.stats.remembered} | 模糊 ${revState.stats.fuzzy} | 忘记 ${revState.stats.forgotten}`,
+                items: revState.items
+            };
+        }
+        function archiveReviewReport() {
+            if (revState.items.length === 0) return;
+            reportStore.add(buildReviewReport()); saveToCloud(true);
+        }
+        function showReviewSummary() {
+            document.getElementById('reviewTopBar').classList.add('hidden');
+            document.getElementById('reviewCardArea').classList.add('hidden');
+            document.getElementById('actionButtons').classList.add('hidden');
+            document.getElementById('endReviewBtn').classList.add('hidden');
+            document.getElementById('reviewSummary').classList.remove('hidden'); document.getElementById('reviewSummary').classList.add('flex');
+            document.getElementById('revStats').innerText = `共 ${revState.stats.total} 个词 | 记得 ${revState.stats.remembered} | 模糊 ${revState.stats.fuzzy} | 忘记 ${revState.stats.forgotten}`;
+            renderReportHistory('review', 'revReportHistory');
+        }
+        function endReviewEarly() {
+            archiveReviewReport();
+            if (revState.items.length > 0) showToast('复习报告已存档，可下次找回'); else showToast('已结束本次复习');
+            showView('homeView');
+        }
+        function exportReviewPrompt() {
+            navigator.clipboard.writeText(reportStore.getText(buildReviewReport())).then(() => showToast('复习报告已复制')).catch(() => showToast('复制失败'));
         }
 
         function switchSpellingTrack(track) {
@@ -1110,7 +1232,7 @@
                 w.spellStreak = 0; w.spellMistakeCount++; w.spellInterval = 0; spState.stats.struggled++; 
                 spState.queue.push({ wordObj: w, isInterleaved: false, trace: [...item.trace, '[当堂自愈轮回]'] });
             }
-            spState.completedLogs.push({ target: w.word, en: w.meaning_en, zh: w.meaning_zh, streak: w.spellStreak, trace: item.trace });
+            spState.completedLogs.push({ target: w.word, en: w.meaning_en, zh: w.meaning_zh, streak: w.spellStreak, result: isPerfect ? '直通' : '纠缠', trace: item.trace });
             spState.currentIndex++; spState.step = 'INITIAL_BLIND'; saveToCloud(true); renderSpellingItem();
         }
 
@@ -1118,10 +1240,23 @@
             document.getElementById('spellingActive').classList.add('hidden'); document.getElementById('spellingActive').classList.remove('flex');
             document.getElementById('spellingSummary').classList.remove('hidden'); document.getElementById('spellingSummary').classList.add('flex');
             document.getElementById('spellStats').innerText = `共 ${spState.stats.total} 项 | 一次直通 ${spState.stats.passed} | 陷入纠缠 ${spState.stats.struggled}`;
+            archiveSpellingReport(); renderReportHistory('spelling', 'spellReportHistory');
+        }
+
+        function archiveSpellingReport() {
+            if (spState.completedLogs.length === 0) return;
+            reportStore.add({
+                generatedAt: new Date().toISOString(), type: 'spelling',
+                title: `Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})`,
+                date: localDateStr(),
+                summary: `共 ${spState.stats.total} 项 | 直通 ${spState.stats.passed} | 纠缠 ${spState.stats.struggled}`,
+                items: spState.completedLogs.map(l => ({ word: l.target, en: l.en, zh: l.zh, streak: l.streak, result: l.result, trace: l.trace }))
+            });
+            saveToCloud(true);
         }
 
         function exportSpellingPrompt() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = localDateStr();
             let exportText = `[Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})]\n日期: ${today}\n总数: ${spState.stats.total} | 直通: ${spState.stats.passed} | 纠缠: ${spState.stats.struggled}\n\n【交互轨迹】\n`;
             spState.completedLogs.forEach((log, idx) => {
                 exportText += `${idx + 1}. 目标: ${log.target} (EN: ${log.en || '-'} | ZH: ${log.zh || '-'})\n   - 连胜: ${log.streak}\n`;
@@ -1501,10 +1636,58 @@ Rules:
             document.getElementById('dicActive').classList.add('hidden'); document.getElementById('dicActive').classList.remove('flex');
             document.getElementById('dicSummary').classList.remove('hidden'); document.getElementById('dicSummary').classList.add('flex');
             document.getElementById('dicStats').innerText = `共 ${dicState.stats.total} 句 | 直通 ${dicState.stats.perfect} | 修补 ${dicState.stats.repaired}`;
+            archiveDictationReport(); renderReportHistory('dictation', 'dicReportHistory');
+        }
+
+        function archiveDictationReport() {
+            reportStore.add({
+                generatedAt: new Date().toISOString(), type: 'dictation', title: 'Dictation-Report',
+                date: localDateStr(),
+                source: dicState.sourceName || '',
+                summary: `共 ${dicState.stats.total} 句 | 直通 ${dicState.stats.perfect} | 修补 ${dicState.stats.repaired} | 错词 ${dicState.todayErrorsRecord.length} 个`,
+                items: (dicState.todayErrorsRecord || []).map(word => ({ word }))
+            });
+            saveToCloud(true);
+        }
+
+        // ===== v33 报告历史列表 + 浮层查看/复制 =====
+        function formatReportDate(generatedAt) {
+            const d = new Date(generatedAt); const now = new Date(); const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+            const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            if (d.toDateString() === now.toDateString()) return `今天 ${timeStr}`;
+            if (d.toDateString() === yesterday.toDateString()) return `昨天 ${timeStr}`;
+            return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${timeStr}`;
+        }
+        function renderReportHistory(type, containerId) {
+            const list = reportStore.byType(type);
+            const el = document.getElementById(containerId);
+            if (!list.length) { el.innerHTML = '<div class="text-[11px] text-slate-400 py-1">（暂无近 7 天报告）</div>'; return; }
+            el.innerHTML = list.map(r =>
+                `<button onclick="openReportPopover('${r.generatedAt}')" class="w-full text-left text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2.5 py-2 rounded-md transition flex items-center justify-between">
+                    <span>${formatReportDate(r.generatedAt)} · ${r.summary}</span><span class="text-slate-300">›</span>
+                </button>`
+            ).join('');
+        }
+        let activeReportPopover = null;
+        function openReportPopover(generatedAt) {
+            activeReportPopover = reportStore.load().find(r => r.generatedAt === generatedAt);
+            if (!activeReportPopover) return;
+            const typeLabel = { review: '复习', spelling: '默写', dictation: '听写' }[activeReportPopover.type] || '';
+            document.getElementById('reportPopTitle').innerText = `${typeLabel}报告 · ${activeReportPopover.date}`;
+            document.getElementById('reportPopContent').innerText = reportStore.getText(activeReportPopover);
+            const pop = document.getElementById('reportPopover'); pop.classList.remove('hidden'); pop.classList.add('flex');
+        }
+        function closeReportPopover() {
+            const pop = document.getElementById('reportPopover'); pop.classList.add('hidden'); pop.classList.remove('flex');
+            activeReportPopover = null;
+        }
+        function copyReportPopover() {
+            if (!activeReportPopover) return;
+            navigator.clipboard.writeText(reportStore.getText(activeReportPopover)).then(() => showToast('报告已复制')).catch(() => showToast('复制失败'));
         }
 
         function exportDictationPrompt() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = localDateStr();
             let exportText = `[Dictation-Report]\n日期: ${today}\n来源: ${dicState.sourceName}\n总数: ${dicState.stats.total} | 直通: ${dicState.stats.perfect} | 修补: ${dicState.stats.repaired}\n\n【诊断错词库 (共 ${dicState.todayErrorsRecord.length} 个)】\n`;
             if (dicState.todayErrorsRecord.length === 0) exportText += `- 完美直通，无拼写出入。\n`;
             else dicState.todayErrorsRecord.forEach((word, i) => exportText += `${i + 1}. ${word}\n`);
