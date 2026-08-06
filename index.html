@@ -374,6 +374,8 @@
                 <div class="flex items-center justify-between w-full md:w-auto space-x-3 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100 whitespace-nowrap">
                     <span class="text-xs font-mono text-slate-400 font-normal" id="dictTotalCount">共 0 项</span>
                     <span class="text-slate-200">|</span>
+                    <button onclick="showView('reportView')" class="text-xs text-slate-500 hover:text-slate-800 transition font-normal">📋 学习报告</button>
+                    <span class="text-slate-200">|</span>
                     <button onclick="exportFilteredDictionary()" class="text-xs text-slate-500 hover:text-slate-800 transition font-normal">复制</button>
                     <span class="text-slate-200">|</span>
                     <button id="deleteSelectedBtn" onclick="deleteSelected()" class="text-xs text-rose-500 hover:text-rose-700 transition font-normal hidden">删除已选 (<span id="selectedCount">0</span>)</button>
@@ -398,6 +400,23 @@
                     <tbody id="dictionaryBody" class="divide-y divide-slate-100 text-slate-700"></tbody>
                 </table>
             </div>
+        </div>
+    </main>
+
+    <!-- 视图：学习报告（近 7 天） -->
+    <main id="reportView" class="w-full max-w-md flex-1 flex flex-col hidden">
+        <div class="bg-white border border-slate-200 rounded-xl p-8 w-full shadow-sm">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-medium text-slate-900">学习报告</h2>
+                <button onclick="showView('dictionaryView')" class="text-xs text-slate-400 hover:text-slate-700 transition py-1">✕</button>
+            </div>
+            <p class="text-xs text-slate-400 mb-6">近 7 天训练报告 · 点击查看全文并复制</p>
+            <div class="text-xs text-slate-500 font-normal mb-2">复习</div>
+            <div id="reportViewReview" class="mb-6"></div>
+            <div class="text-xs text-slate-500 font-normal mb-2">默写</div>
+            <div id="reportViewSpelling" class="mb-6"></div>
+            <div class="text-xs text-slate-500 font-normal mb-2">听写</div>
+            <div id="reportViewDictation" class="mb-6"></div>
         </div>
     </main>
 
@@ -751,15 +770,20 @@
         }
 
         function showView(viewId, isReviewStart = false) {
-            ['homeView', 'reviewView', 'importView', 'settingsView', 'dictionaryView', 'dictationView', 'spellingView'].forEach(id => {
+            ['homeView', 'reviewView', 'importView', 'settingsView', 'dictionaryView', 'dictationView', 'spellingView', 'reportView'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(viewId).classList.remove('hidden');
             document.getElementById('inlinePopover').classList.add('hidden');
-            editingId = null; 
-            
+            editingId = null;
+
             if(viewId === 'homeView') updateDashboard();
             if(viewId === 'dictionaryView') renderDictionary();
+            if(viewId === 'reportView') {
+                renderReportHistory('review', 'reportViewReview');
+                renderReportHistory('spelling', 'reportViewSpelling');
+                renderReportHistory('dictation', 'reportViewDictation');
+            }
             
             if(viewId === 'settingsView') {
                 document.getElementById('ghToken').value = apiConfig.getGhToken() || '';
