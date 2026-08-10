@@ -1080,9 +1080,18 @@
             document.getElementById('spellSourceDisplay').innerText = item.source || 'Prisma Core';
             
             const posEl = document.getElementById('spellTargetPOS');
+            // v35：盲打阶段（盲打测试/抹除后盲打复验）只显示词性，隐藏 form——
+            // form 可能含答案词（如 sucio 的 "阳性复数 sucios"），显示即泄露答案。
+            // 变位信息在"抄写重建"阶段（答案已揭示）才完整显示。
+            const isBlindStep = (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER');
             if (item.itemType !== 'sentence' && (item.pos || item.form)) {
-                posEl.innerText = item.pos ? `[${item.pos}]${item.form ? ' ' + item.form : ''}` : item.form;
-                posEl.classList.remove('hidden');
+                if (isBlindStep) {
+                    posEl.innerText = item.pos ? `[${item.pos}]` : '';
+                    posEl.classList.toggle('hidden', !item.pos);
+                } else {
+                    posEl.innerText = item.pos ? `[${item.pos}]${item.form ? ' ' + item.form : ''}` : item.form;
+                    posEl.classList.remove('hidden');
+                }
             } else { posEl.classList.add('hidden'); }
             document.getElementById('spellTargetEN').innerText = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
             document.getElementById('spellTargetWord').innerText = item.word;
