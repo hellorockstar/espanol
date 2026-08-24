@@ -473,6 +473,8 @@
 
     <script>
         let vocabList = []; let dueQueue = []; let currentCardIndex = 0; let selectedIds = new Set();
+        // v37：复习毕业门槛——连续记得 10 次（跨天每日制）后退休
+        const GRADUATE_STREAK = 10;
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -714,6 +716,13 @@
             list.forEach(w => {
                 if (!w.itemType) w.itemType = 'word';
 
+                // v37：变位词 EN 提示消歧（幂等）——meaning_en 以人称代词开头且 form 非空时，
+                // 人称转括号 "(we) wash"，提示用户只写变位形式
+                if (w.itemType !== 'sentence' && w.form && typeof w.meaning_en === 'string') {
+                    const m = w.meaning_en.trim().match(/^(we|they|i|you|he|she)\s+(.+)$/i);
+                    if (m) w.meaning_en = `(${m[1].toLowerCase()}) ${m[2]}`;
+                }
+
                 // 斩断历史冗余后缀，静默清洗数据
                 if (w.source) w.source = w.source.replace(/\s*-\s*听写(导入|段落)/g, '');
 
@@ -762,6 +771,12 @@
                     w.spellInterval = 0; w.spellNextReview = Date.now();
                 }
                 if (w.rememberStreak === undefined) w.rememberStreak = 0;
+                // v37：连对10次退休制迁移——rememberStreak 折算带入（连续3 = 3/10）
+                // 已达标的老词直接毕业；graduatedAt 字段初始化
+                if (w.graduatedAt === undefined) {
+                    if (w.rememberStreak >= GRADUATE_STREAK) w.graduatedAt = Date.now();
+                    else w.graduatedAt = null;
+                }
                 if (w.pos === undefined) w.pos = '';
                 if (w.lemma === undefined) w.lemma = w.word;   // 主词=页面形式，原形存 lemma；存量原形词 lemma=word
                 if (w.form === undefined) w.form = '';         // 变位情况标注，原形词留空
@@ -835,8 +850,9 @@
 
         function updateDashboard() {
             const now = Date.now(); 
-            dueQueue = vocabList.filter(v => v.itemType !== 'sentence' && v.nextReview <= now && v.status !== 'pending');
-            const wordCount = vocabList.filter(v => v.itemType !== 'sentence').length;
+            // v37：毕业词（graduatedAt 已设）不进入复习队列；默写队列不受影响
+            dueQueue = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt && v.nextReview <= now && v.status !== 'pending');
+            const wordCount = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt).length;
             document.getElementById('totalCount').innerText = wordCount; 
             document.getElementById('dueCount').innerText = dueQueue.length;
             const startBtn = document.getElementById('startBtn'); startBtn.disabled = dueQueue.length === 0;
@@ -902,17 +918,26 @@
 
         function processReview(quality) {
             const word = dueQueue[currentCardIndex];
-            if (quality === 1) word.interval = 0;
-            else if (quality === 3) word.interval = word.interval === 0 ? 1 : word.interval * 1.5;
-            else word.interval = word.interval === 0 ? 1 : (word.interval === 1 ? 3 : word.interval * 2);
+            // v37：连对10次退休制（跨天每日制）——rememberStreak 即毕业进度
+            // 记得 +1；忘记归零；模糊减半（向上取整，0 保持 0）
+            // 达到 GRADUATE_STREAK 后词退休（graduatedAt 记录），不再进入复习队列
+            if (quality === 0) {
+                word.rememberStreak = (word.rememberStreak || 0) + 1;
+                if (word.rememberStreak >= GRADUATE_STREAK) word.graduatedAt = Date.now();
+            } else if (quality === 1) {
+                word.rememberStreak = 0;
+            } else { // quality === 3 模糊
+                word.rememberStreak = Math.floor((word.rememberStreak || 0) / 2);
+            }
+            // nextReview 统一为明天（跨天每日制：每天出现一次直到毕业）
+            // 忘记的词今天可再练（nextReview=now 会立即重新入队，但为避免当日重复刷同一词，
+            // 忘记也排明天——用户可在同一天重开复习会话再次遇到它）
+            word.nextReview = getNextJSTMidnight(1);
 
-            word.interval = Math.round(word.interval);
+            word.interval = 1; // v37 兼容字段保留，调度不再使用
             word.reviewCount = (word.reviewCount || 0) + 1;
-            word.nextReview = word.interval === 0 ? Date.now() : getNextJSTMidnight(word.interval);
 
-            // 默写准入：连续"记得"(quality=0) 计数，模糊/忘记归零
-            if (quality === 0) word.rememberStreak = (word.rememberStreak || 0) + 1;
-            else word.rememberStreak = 0;
+            // 默写准入沿用 rememberStreak（语义一致：连续记得次数）
 
             // v33：收集本次复习逐词结果（供结束总结界面/报告存档）
             const resultMap = { 0: '记得', 1: '忘记', 3: '模糊' };
@@ -1073,6 +1098,15 @@
         function renderSpellingItem() {
             if (spState.currentIndex >= spState.queue.length) { endSpelling(); return; }
             const item = spState.queue[spState.currentIndex].wordObj;
+
+            // v37：form 中文标注 → 英文性数元信息（只出元信息，绝不含答案词）
+            function spellingFormMeta(form) {
+                if (!form) return '';
+                const parts = [];
+                if (/阴/.test(form)) parts.push('fem.'); else if (/阳/.test(form)) parts.push('masc.');
+                if (/复/.test(form)) parts.push('pl.'); else if (/单/.test(form)) parts.push('sg.');
+                return parts.join(' ');
+            }
             
             document.getElementById('spellProgress').innerText = `${spState.currentIndex + 1}/${spState.queue.length}`;
             document.getElementById('spellTrackBadge').innerText = currentSpellingTrack === 'word' ? '词汇' : '句法';
@@ -1093,7 +1127,26 @@
                     posEl.classList.remove('hidden');
                 }
             } else { posEl.classList.add('hidden'); }
-            document.getElementById('spellTargetEN').innerText = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
+            // v37：EN 提示消歧——
+            // ① 变位/词形词（form 非空）且 meaning_en 以人称开头（we/they/I/you/he/she）时，
+            //    人称转括号提示 "(we) wash"，明确只写变位形式不写反身代词
+            // ② 同库存在相同 meaning_en 的其他词时，附加性数元信息 [masc. pl.] 等
+            //    （从 form 中文标注推导，只出元信息不出答案词，避免 v36 类泄露）
+            let hintEN = item.meaning_en || (currentSpellingTrack === 'sentence' ? '请默写全句' : item.meaning_zh || '-');
+            if (item.itemType !== 'sentence') {
+                const personMap = { we: 1, they: 1, i: 1, you: 1, he: 1, she: 1 };
+                const enWords = (item.meaning_en || '').trim().split(/\s+/);
+                if (item.form && enWords.length > 1 && personMap[enWords[0].toLowerCase()]) {
+                    hintEN = `(${enWords[0]}) ${enWords.slice(1).join(' ')}`;
+                }
+                const formMeta = spellingFormMeta(item.form);
+                if (formMeta) {
+                    const dup = vocabList.some(v => v !== item && v.itemType !== 'sentence'
+                        && (v.meaning_en || '').toLowerCase() === (item.meaning_en || '').toLowerCase());
+                    if (dup) hintEN += ` [${formMeta}]`;
+                }
+            }
+            document.getElementById('spellTargetEN').innerText = hintEN;
             document.getElementById('spellTargetWord').innerText = item.word;
             
             const zhEl = document.getElementById('spellTargetZH');
