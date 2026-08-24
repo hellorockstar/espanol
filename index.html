@@ -474,6 +474,7 @@
     <script>
         let vocabList = []; let dueQueue = []; let currentCardIndex = 0; let selectedIds = new Set();
         // v37：复习毕业门槛——连续记得 10 次（跨天每日制）后退休
+        // v38：默写轨同规则——连胜 10 次后默写退休，与复习频率/次数一致
         const GRADUATE_STREAK = 10;
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
@@ -777,6 +778,12 @@
                     if (w.rememberStreak >= GRADUATE_STREAK) w.graduatedAt = Date.now();
                     else w.graduatedAt = null;
                 }
+                // v38：默写轨连对10次退休制——存量 spellStreak 折算带入（连胜3 = 3/10）
+                // 已达标的老词直接默写毕业；spellGraduatedAt 字段初始化
+                if (w.spellGraduatedAt === undefined) {
+                    if ((w.spellStreak || 0) >= GRADUATE_STREAK) w.spellGraduatedAt = Date.now();
+                    else w.spellGraduatedAt = null;
+                }
                 if (w.pos === undefined) w.pos = '';
                 if (w.lemma === undefined) w.lemma = w.word;   // 主词=页面形式，原形存 lemma；存量原形词 lemma=word
                 if (w.form === undefined) w.form = '';         // 变位情况标注，原形词留空
@@ -1018,7 +1025,7 @@
         function updateSpellingDashboard() {
             const now = Date.now(); let dueList = []; let lockedCount = 0; let lockedHtml = '';
             if (currentSpellingTrack === 'word') {
-                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             } else {
                 const allDueSentences = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
                 allDueSentences.forEach(s => {
@@ -1039,7 +1046,7 @@
 
         function startSpelling() {
             const now = Date.now(); let dueList = [];
-            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             else dueList = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now)).filter(s => !checkSentenceLock(s).isLocked);
             if (dueList.length === 0) return;
 
@@ -1309,15 +1316,15 @@
         function finalizeSpellingWord(item, isPerfect) {
             const w = item.wordObj; w.spellReviewCount++;
             if (isPerfect) {
+                // v38：与复习轨同规则——每天出现一次，连胜满 GRADUATE_STREAK 默写退休
                 w.spellStreak++; spState.stats.passed++;
-                if(w.spellStreak >= 3) w.spellInterval = w.spellInterval === 0 ? 7 : w.spellInterval * 2; 
-                else w.spellInterval = w.spellInterval === 0 ? 1 : 3;
-                w.spellInterval = Math.round(w.spellInterval);
-                w.spellNextReview = getNextJSTMidnight(w.spellInterval);
-            } else { 
-                w.spellStreak = 0; w.spellMistakeCount++; w.spellInterval = 0; spState.stats.struggled++; 
+                if (w.spellStreak >= GRADUATE_STREAK) w.spellGraduatedAt = Date.now();
+            } else {
+                w.spellStreak = 0; w.spellMistakeCount++; spState.stats.struggled++;
                 spState.queue.push({ wordObj: w, isInterleaved: false, trace: [...item.trace, '[当堂自愈轮回]'] });
             }
+            // v38：spellInterval/spellNextReview 保留字段但不再参与调度（下次统一明天）
+            w.spellNextReview = getNextJSTMidnight(1);
             spState.completedLogs.push({ target: w.word, en: w.meaning_en, zh: w.meaning_zh, streak: w.spellStreak, result: isPerfect ? '直通' : '纠缠', trace: item.trace });
             spState.currentIndex++; spState.step = 'INITIAL_BLIND'; saveToCloud(true); renderSpellingItem();
         }
@@ -2059,6 +2066,8 @@ Rules:
                         if(w.sentence && !w.example) w.example = w.sentence;
                         if(w.spellReviewCount === undefined) { w.spellReviewCount=0; w.spellMistakeCount=0; w.spellStreak=0; w.spellInterval=0; w.spellNextReview=Date.now(); }
                         if(w.rememberStreak === undefined) w.rememberStreak = 0;
+                        if(w.graduatedAt === undefined) w.graduatedAt = null;         // v37 复习毕业制字段
+                        if(w.spellGraduatedAt === undefined) w.spellGraduatedAt = null; // v38 默写毕业制字段
                         if(w.pos === undefined) w.pos = '';
                         if(w.lemma === undefined) w.lemma = w.word || '';
                         if(w.form === undefined) w.form = '';
