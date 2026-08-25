@@ -45,7 +45,7 @@
     <header class="w-full max-w-4xl flex justify-between items-center py-6 mb-2 border-b border-slate-200">
         <div class="flex items-baseline space-x-4">
             <h1 class="text-xl font-bold tracking-tight cursor-pointer hover:text-slate-600 transition select-none" onclick="showView('homeView')">我爱背单词</h1>
-            <span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v30</span>
+            <span id="appVersionBadge" class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-mono">v38</span>
             <span id="globalTokenBadge" onclick="resetTokenUsage()" class="text-xs font-mono text-slate-400 cursor-pointer hover:text-slate-700 transition" title="点击重置统计">
                 Token: 0.000 M
             </span>
@@ -476,6 +476,8 @@
         // v37：复习毕业门槛——连续记得 10 次（跨天每日制）后退休
         // v38：默写轨同规则——连胜 10 次后默写退休，与复习频率/次数一致
         const GRADUATE_STREAK = 10;
+        // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
+        const APP_VERSION = 'v38';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -650,6 +652,8 @@
         }
 
         async function init() {
+            const versionBadge = document.getElementById('appVersionBadge');
+            if (versionBadge) versionBadge.innerText = APP_VERSION;   // v38a：徽章动态化
             updateTokenDisplay();
             
             const localData = localStorage.getItem('prismaVocab');
