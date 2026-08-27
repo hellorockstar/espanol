@@ -193,6 +193,9 @@
 
                             <div class="text-xs text-slate-500 mb-1">规范参考答案:</div>
                             <span id="spellCorrectAnswer" class="text-lg font-medium text-slate-900 tracking-wide mb-4 block"></span>
+
+                            <!-- v39：反馈态继续按钮（Space 翻页的屏幕兜底，iPhone 用） -->
+                            <button id="spellAdvanceBtn" onclick="advanceSpelling()" class="hidden mb-4 px-6 py-2.5 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-700 transition shadow-sm">继续 (空格)</button>
                             
                             <div id="spellSafetyNetArea" class="hidden w-full pt-4 border-t border-slate-100 flex flex-col items-center">
                                 <span class="text-xs text-slate-500 mb-2.5">点击生词，后台静默抓取并纳入特训：</span>
@@ -504,6 +507,8 @@
         // ===== v33 报告系统 =====
         // 本地日期（YYYY-MM-DD，本地时区）；注意勿用 toISOString 取日期——那是 UTC，UTC+8 凌晨会标错前一天
         function localDateStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+        // v39：本地日期+时刻（YYYY-MM-DD HH:MM，本地时区）——报告头一行显示完成时刻
+        function localDateTimeStr() { const d = new Date(); return `${localDateStr()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
         // 训练报告统一存储：localStorage 主源 + Gist 备份，保留最近 7 个自然日。
         // generatedAt（ISO 时间戳，精确到秒）为唯一 ID，天然支持同天多次训练不冲突、排序、过期清理与 Mea 归档去重。
         const reportStore = {
@@ -683,6 +688,16 @@
             });
 
             renderImportSourceOptions();
+
+            // v39：默写反馈态键盘推进——Space/Enter=继续（输入框聚焦时 Space 照常打字，Enter 会被 onkeypress 拦去 checkSpelling，
+            // 但 checkSpelling 空提交直接 return，不会误触；反馈态时输入框已 blur，两条路径都安全落到 advanceSpelling）
+            document.addEventListener('keydown', (e) => {
+                const spellingView = document.getElementById('spellingActive');
+                if (!spellingView || spellingView.classList.contains('hidden') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+                if ((e.code === 'Space' || e.key === 'Enter') && spState && spState._pendingAction) {
+                    e.preventDefault(); advanceSpelling();
+                }
+            });
 
             // [NEW in v2.7.2] 复习舱物理键盘快捷键映射 (Space/Enter=翻卡/记得, F/←=忘记, H/↓=模糊, →=记得)
             document.addEventListener('keydown', (e) => {
@@ -941,9 +956,18 @@
                 word.rememberStreak = Math.floor((word.rememberStreak || 0) / 2);
             }
             // nextReview 统一为明天（跨天每日制：每天出现一次直到毕业）
-            // 忘记的词今天可再练（nextReview=now 会立即重新入队，但为避免当日重复刷同一词，
-            // 忘记也排明天——用户可在同一天重开复习会话再次遇到它）
             word.nextReview = getNextJSTMidnight(1);
+
+            // v39：忘记/模糊当轮重跳——插队尾，直到答对（单轮最多重跳2次防死循环）
+            if (quality !== 0) {
+                word._requeueCount = (word._requeueCount || 0);
+                if (word._requeueCount < 2) {
+                    word._requeueCount++;
+                    dueQueue.push(word);
+                }
+            } else {
+                word._requeueCount = 0;
+            }
 
             word.interval = 1; // v37 兼容字段保留，调度不再使用
             word.reviewCount = (word.reviewCount || 0) + 1;
@@ -965,7 +989,7 @@
         function buildReviewReport() {
             return {
                 generatedAt: new Date().toISOString(), type: 'review', title: 'Review-Report',
-                date: localDateStr(),
+                date: localDateTimeStr(),
                 summary: `复习 ${revState.stats.total} 个词 | 记得 ${revState.stats.remembered} | 模糊 ${revState.stats.fuzzy} | 忘记 ${revState.stats.forgotten}`,
                 items: revState.items
             };
@@ -994,6 +1018,7 @@
 
         function switchSpellingTrack(track) {
             currentSpellingTrack = track;
+            spellPendingPool = []; // v39：切轨时清空上一轨的 module 剩余池
             document.getElementById('spellingSetup').classList.remove('hidden');
             document.getElementById('spellingActive').classList.add('hidden');
             document.getElementById('spellingSummary').classList.add('hidden');
@@ -1048,16 +1073,30 @@
             startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已清空";
         }
 
+        const SPELL_MODULE_SIZE = 20; // v39：默写分批——到期 > 20 词时按 20 切 module，做完一批出统计再做下一批
+        let spellPendingPool = []; // v39：未做完的剩余词池（跨 module 记忆，不持久化）
+
         function startSpelling() {
             const now = Date.now(); let dueList = [];
             if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
             else dueList = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now)).filter(s => !checkSentenceLock(s).isLocked);
             if (dueList.length === 0) return;
 
+            // v39：module 切分——上一批的 pool 若还有剩余且仍在到期内，优先续做；否则新取
+            let pool = spellPendingPool.length ? spellPendingPool.filter(w => w.spellNextReview <= now || w.spellReviewCount === 0) : dueList;
+            spellPendingPool = [];
+            let batch;
+            if (currentSpellingTrack !== 'word' || pool.length <= SPELL_MODULE_SIZE) {
+                batch = pool;
+            } else {
+                batch = pool.slice(0, SPELL_MODULE_SIZE);
+                spellPendingPool = pool.slice(SPELL_MODULE_SIZE);
+            }
+
             spState = {
-                queue: dueList.map(w => ({ wordObj: w, isInterleaved: false, trace: [] })),
+                queue: batch.map(w => ({ wordObj: w, isInterleaved: false, trace: [] })),
                 currentIndex: 0, step: 'INITIAL_BLIND',
-                completedLogs: [], stats: { total: dueList.length, passed: 0, struggled: 0 },
+                completedLogs: [], stats: { total: batch.length, passed: 0, struggled: 0 },
                 lastWrongInput: ''
             };
             document.getElementById('spellingSetup').classList.add('hidden');
@@ -1171,9 +1210,21 @@
             inputEl.className = "w-full border border-slate-300 rounded-md p-4 text-center text-lg outline-none transition focus:border-slate-500 bg-white text-slate-900 font-medium shadow-sm";
             safetyNetArea.classList.add('hidden');
             
-            if (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER') {
+            if (spState._pendingAction) {
+                // v39：提交后反馈态——一律显示答案卡（答对也看，巩固正确拼写），等空格/按钮继续
+                answerArea.classList.remove('hidden');
+                document.getElementById('spellSpeakBtn').classList.remove('hidden');
+                document.getElementById('spellAdvanceBtn').classList.remove('hidden');
+                document.getElementById('spellCorrectAnswer').innerHTML = spState.lastWrongInput ? renderSpellCorrectDiff(spState.lastWrongInput, item.word) : item.word;
+                if (spState.lastWrongInput) {
+                    document.getElementById('spellUserWrongInput').innerHTML = renderSpellTokenDiff(spState.lastWrongInput, item.word);
+                    userDiffBox.classList.remove('hidden');
+                } else userDiffBox.classList.add('hidden');
+                labelEl.innerText = "对照答案 · 按空格或点继续";
+            } else if (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER') {
                 answerArea.classList.add('hidden'); userDiffBox.classList.add('hidden');
                 document.getElementById('spellSpeakBtn').classList.add('hidden');
+                const advBtn = document.getElementById('spellAdvanceBtn'); if (advBtn) advBtn.classList.add('hidden');
                 labelEl.innerText = spState.step === 'INITIAL_BLIND' ? "盲打测试" : "抹除后盲打复验";
             } else if (spState.step === 'COPY_WITH_ANSWER') {
                 answerArea.classList.remove('hidden');
@@ -1284,36 +1335,60 @@
             const inputEl = document.getElementById('spellInput'); const inputVal = inputEl.value.trim(); if(!inputVal) return;
             const currentItem = spState.queue[spState.currentIndex]; const target = currentItem.wordObj.word;
             const isCorrect = cleanPunc(inputVal).toLowerCase() === cleanPunc(target).toLowerCase();
-            
+
+            // v39：提交即反馈——瞬时朗读正确答案（听正确读音，不强化错误输入）
+            if (autoReadEnabled) { try { speechSynthesis.cancel(); } catch(e) {} speakWord(target); }
+
             if (spState.step === 'INITIAL_BLIND') {
                 if (isCorrect) {
                     currentItem.trace.push(`[盲打]: ${inputVal} (通过)`);
-                    finalizeSpellingWord(currentItem, true);
-                    if (autoReadEnabled) speakWord(target);
+                    // v39：答对也先看答案卡，空格确认后 finalize（防止手快漏看正确拼写）
+                    spState._pendingFinalize = { item: currentItem, isPerfect: true };
+                    spState._pendingAction = 'finalize';
                 }
                 else {
                     currentItem.trace.push(`[盲打错]: ${inputVal}`);
                     spState.lastWrongInput = inputVal;
-                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem();
-                    if (autoReadEnabled) speakWord(target);
+                    spState._pendingAction = 'copy';
                 }
             } else if (spState.step === 'COPY_WITH_ANSWER') {
-                if (isCorrect) { 
-                    currentItem.trace.push(`[抄写重建]: ${inputVal}`); 
-                    spState.step = 'BLIND_WITHOUT_ANSWER'; renderSpellingItem(); 
-                } else { inputEl.value = ''; }
+                if (isCorrect) {
+                    currentItem.trace.push(`[抄写重建]: ${inputVal}`);
+                    spState._pendingAction = 'blind2';
+                } else { inputEl.value = ''; return; }
             } else if (spState.step === 'BLIND_WITHOUT_ANSWER') {
                 if (isCorrect) {
                     currentItem.trace.push(`[抹除复查]: ${inputVal} (通过)`);
                     if (!currentItem.isInterleaved) {
-                        const insertPos = Math.min(spState.currentIndex + 3, spState.queue.length);
-                        spState.queue.splice(insertPos, 0, { wordObj: currentItem.wordObj, isInterleaved: true, trace: currentItem.trace });
-                        spState.queue.splice(spState.currentIndex, 1); spState.step = 'INITIAL_BLIND'; renderSpellingItem();
-                    } else { finalizeSpellingWord(currentItem, false); }
-                } else { 
+                        spState._pendingAction = 'interleave';
+                    } else { spState._pendingFinalize = { item: currentItem, isPerfect: false }; spState._pendingAction = 'finalize'; }
+                } else {
                     spState.lastWrongInput = inputVal;
-                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); 
+                    spState._pendingAction = 'copy';
                 }
+            }
+
+            // v39：先渲染反馈（答案卡/差异），不自动推进——等用户按空格或点"继续"按钮
+            inputEl.blur();
+            renderSpellingItem();
+        }
+
+        // v39：空格 / "继续"按钮的统一推进入口——执行 checkSpelling 暂存的动作
+        function advanceSpelling() {
+            const act = spState._pendingAction; if (!act) return;
+            spState._pendingAction = null;
+            const item = spState.queue[spState.currentIndex];
+            if (act === 'finalize') {
+                const p = spState._pendingFinalize; spState._pendingFinalize = null;
+                finalizeSpellingWord(p.item, p.isPerfect);
+            } else if (act === 'copy') {
+                spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem();
+            } else if (act === 'blind2') {
+                spState.step = 'BLIND_WITHOUT_ANSWER'; renderSpellingItem();
+            } else if (act === 'interleave') {
+                const insertPos = Math.min(spState.currentIndex + 3, spState.queue.length);
+                spState.queue.splice(insertPos, 0, { wordObj: item.wordObj, isInterleaved: true, trace: item.trace });
+                spState.queue.splice(spState.currentIndex, 1); spState.step = 'INITIAL_BLIND'; renderSpellingItem();
             }
         }
 
@@ -1345,7 +1420,7 @@
             reportStore.add({
                 generatedAt: new Date().toISOString(), type: 'spelling',
                 title: `Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})`,
-                date: localDateStr(),
+                date: localDateTimeStr(),
                 summary: `共 ${spState.stats.total} 项 | 直通 ${spState.stats.passed} | 纠缠 ${spState.stats.struggled}`,
                 items: spState.completedLogs.map(l => ({ word: l.target, en: l.en, zh: l.zh, streak: l.streak, result: l.result, trace: l.trace }))
             });
@@ -1739,7 +1814,7 @@ Rules:
         function archiveDictationReport() {
             reportStore.add({
                 generatedAt: new Date().toISOString(), type: 'dictation', title: 'Dictation-Report',
-                date: localDateStr(),
+                date: localDateTimeStr(),
                 source: dicState.sourceName || '',
                 summary: `共 ${dicState.stats.total} 句 | 直通 ${dicState.stats.perfect} | 修补 ${dicState.stats.repaired} | 错词 ${dicState.todayErrorsRecord.length} 个`,
                 items: (dicState.todayErrorsRecord || []).map(word => ({ word }))
