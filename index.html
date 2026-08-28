@@ -195,7 +195,7 @@
                             <span id="spellCorrectAnswer" class="text-lg font-medium text-slate-900 tracking-wide mb-4 block"></span>
 
                             <!-- v39：反馈态继续按钮（Space 翻页的屏幕兜底，iPhone 用） -->
-                            <button id="spellAdvanceBtn" onclick="advanceSpelling()" class="hidden mb-4 px-6 py-2.5 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-700 transition shadow-sm">继续 (空格)</button>
+                            <button id="spellAdvanceBtn" onclick="advanceSpelling()" class="hidden mb-4 px-6 py-2.5 btn-primary rounded-md text-sm font-medium transition shadow-sm">继续</button>
                             
                             <div id="spellSafetyNetArea" class="hidden w-full pt-4 border-t border-slate-100 flex flex-col items-center">
                                 <span class="text-xs text-slate-500 mb-2.5">点击生词，后台静默抓取并纳入特训：</span>
@@ -480,7 +480,7 @@
         // v38：默写轨同规则——连胜 10 次后默写退休，与复习频率/次数一致
         const GRADUATE_STREAK = 10;
         // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
-        const APP_VERSION = 'v38';
+        const APP_VERSION = 'v40';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -1211,20 +1211,35 @@
             safetyNetArea.classList.add('hidden');
             
             if (spState._pendingAction) {
-                // v39：提交后反馈态——一律显示答案卡（答对也看，巩固正确拼写），等空格/按钮继续
+                // v40：答对反馈卡（极简）——✓ 答对了 + 🔊 + 正确答案大字 + 继续；EN/ZH/词性/来源/输入框全隐藏。
+                // （v40 起错误不再进反馈卡：答错直接进 COPY_WITH_ANSWER 抄写重建，v38 原样）
+                const enEl = document.getElementById('spellTargetEN'); enEl.classList.add('hidden');
+                const posEl2 = document.getElementById('spellTargetPOS'); posEl2.classList.add('hidden');
+                document.getElementById('spellSourceDisplay').classList.add('hidden');
+                const zhRow = zhEl.closest('div'); if (zhRow) zhRow.classList.add('hidden');
+                inputEl.classList.add('hidden');
                 answerArea.classList.remove('hidden');
                 document.getElementById('spellSpeakBtn').classList.remove('hidden');
                 document.getElementById('spellAdvanceBtn').classList.remove('hidden');
-                document.getElementById('spellCorrectAnswer').innerHTML = spState.lastWrongInput ? renderSpellCorrectDiff(spState.lastWrongInput, item.word) : item.word;
-                if (spState.lastWrongInput) {
-                    document.getElementById('spellUserWrongInput').innerHTML = renderSpellTokenDiff(spState.lastWrongInput, item.word);
-                    userDiffBox.classList.remove('hidden');
-                } else userDiffBox.classList.add('hidden');
-                labelEl.innerText = "对照答案 · 按空格或点继续";
+                // 答对卡永远干净：清掉可能残留的上一轮错误对比，只显示正确答案本体
+                spState.lastWrongInput = '';
+                userDiffBox.classList.add('hidden');
+                const ansEl = document.getElementById('spellCorrectAnswer');
+                ansEl.innerText = item.word;
+                ansEl.className = "text-3xl font-medium text-slate-900 tracking-wide mb-4 block";
+                labelEl.innerText = "✓ 答对了";
             } else if (spState.step === 'INITIAL_BLIND' || spState.step === 'BLIND_WITHOUT_ANSWER') {
+                // v39b：盲打态恢复全部提示（EN/ZH/词性/来源），隐藏反馈按钮
+                const enEl = document.getElementById('spellTargetEN'); enEl.classList.remove('hidden');
+                document.getElementById('spellSourceDisplay').classList.remove('hidden');
+                const zhRow = zhEl.closest('div'); if (zhRow) zhRow.classList.remove('hidden');
+                inputEl.classList.remove('hidden');
                 answerArea.classList.add('hidden'); userDiffBox.classList.add('hidden');
                 document.getElementById('spellSpeakBtn').classList.add('hidden');
                 const advBtn = document.getElementById('spellAdvanceBtn'); if (advBtn) advBtn.classList.add('hidden');
+                // v40：重置答案字号（答对卡用 3xl 大字，新词默认恢复 lg）
+                const ansEl0 = document.getElementById('spellCorrectAnswer');
+                ansEl0.className = "text-lg font-medium text-slate-900 tracking-wide mb-4 block";
                 labelEl.innerText = spState.step === 'INITIAL_BLIND' ? "盲打测试" : "抹除后盲打复验";
             } else if (spState.step === 'COPY_WITH_ANSWER') {
                 answerArea.classList.remove('hidden');
@@ -1348,13 +1363,15 @@
                 }
                 else {
                     currentItem.trace.push(`[盲打错]: ${inputVal}`);
+                    // v40：错误态回 v38 节奏——直接进抄写重建（对比+重打同卡，零多余按键）
                     spState.lastWrongInput = inputVal;
-                    spState._pendingAction = 'copy';
+                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); return;
                 }
             } else if (spState.step === 'COPY_WITH_ANSWER') {
                 if (isCorrect) {
                     currentItem.trace.push(`[抄写重建]: ${inputVal}`);
-                    spState._pendingAction = 'blind2';
+                    // v40：抄写对 → 直接进抹除复验（v38 节奏，不停顿）
+                    spState.step = 'BLIND_WITHOUT_ANSWER'; renderSpellingItem(); return;
                 } else { inputEl.value = ''; return; }
             } else if (spState.step === 'BLIND_WITHOUT_ANSWER') {
                 if (isCorrect) {
@@ -1364,7 +1381,8 @@
                     } else { spState._pendingFinalize = { item: currentItem, isPerfect: false }; spState._pendingAction = 'finalize'; }
                 } else {
                     spState.lastWrongInput = inputVal;
-                    spState._pendingAction = 'copy';
+                    // v40：复验错 → 直接进抄写重建（v38 节奏）
+                    spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem(); return;
                 }
             }
 
@@ -1374,6 +1392,7 @@
         }
 
         // v39：空格 / "继续"按钮的统一推进入口——执行 checkSpelling 暂存的动作
+        // v40：错误路径已改为直进抄写重建（不暂存），此处只剩答对后的 finalize / interleave
         function advanceSpelling() {
             const act = spState._pendingAction; if (!act) return;
             spState._pendingAction = null;
@@ -1381,10 +1400,6 @@
             if (act === 'finalize') {
                 const p = spState._pendingFinalize; spState._pendingFinalize = null;
                 finalizeSpellingWord(p.item, p.isPerfect);
-            } else if (act === 'copy') {
-                spState.step = 'COPY_WITH_ANSWER'; renderSpellingItem();
-            } else if (act === 'blind2') {
-                spState.step = 'BLIND_WITHOUT_ANSWER'; renderSpellingItem();
             } else if (act === 'interleave') {
                 const insertPos = Math.min(spState.currentIndex + 3, spState.queue.length);
                 spState.queue.splice(insertPos, 0, { wordObj: item.wordObj, isInterleaved: true, trace: item.trace });
