@@ -1031,16 +1031,19 @@
             const report = buildReviewReport();
             // v42：同日多批合并——今天已有复习报告则并入（总数/记得/模糊/忘记累加，逐词记录追加为批次小节），不新建
             const todayPrefix = localDateStr();
-            const existing = reportStore.load().find(r => r.type === 'review' && (r.date || '').startsWith(todayPrefix));
+            // v42b：挑今天最新的复习报告并入（当天可能残留多条 v41 时代的独立报告，find() 会误选老条目导致分裂）
+            const todays = reportStore.load().filter(r => r.type === 'review' && (r.date || '').startsWith(todayPrefix));
+            const existing = todays.length ? todays.reduce((a, b) => a.generatedAt > b.generatedAt ? a : b) : null;
             if (existing) {
+                const existingId = existing.generatedAt; // 先记 ID：load() 每次重新解析对象，不能用对象身份过滤
                 existing.generatedAt = report.generatedAt; existing.date = report.date;
                 const batchNo = (existing.batches?.length || 0) + 1;
                 existing.batches = [...(existing.batches || []), { no: batchNo, ...report.batch }];
                 const s = existing.batches.reduce((acc, b) => ({ total: acc.total + b.stats.total, remembered: acc.remembered + b.stats.remembered, fuzzy: acc.fuzzy + b.stats.fuzzy, forgotten: acc.forgotten + b.stats.forgotten }), { total: 0, remembered: 0, fuzzy: 0, forgotten: 0 });
                 existing.summary = `复习 ${s.total} 个词 | 记得 ${s.remembered} | 模糊 ${s.fuzzy} | 忘记 ${s.forgotten}`;
                 existing.items = existing.batches.flatMap(b => b.items);
-                // 直接替换列表中的旧条目（add() 的 merge 按 generatedAt 去重，而 generatedAt 已更新，旧条目不会被替换）
-                const list = reportStore.load().filter(r => r !== existing);
+                // 按 ID 删除旧条目再存（对象身份不可靠：两次 load() 产生不同对象）
+                const list = reportStore.load().filter(r => r.generatedAt !== existingId);
                 list.push(existing);
                 reportStore.save(reportStore.prune(list));
             } else {
