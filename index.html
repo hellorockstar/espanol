@@ -480,7 +480,7 @@
         // v38：默写轨同规则——连胜 10 次后默写退休，与复习频率/次数一致
         const GRADUATE_STREAK = 10;
         // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
-        const APP_VERSION = 'v41';
+        const APP_VERSION = 'v42';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -522,7 +522,13 @@
             merge(localList, cloudList) {
                 const seen = new Set(localList.map(r => r.generatedAt));
                 const merged = localList.slice();
-                (cloudList || []).forEach(r => { if (r && r.generatedAt && !seen.has(r.generatedAt)) merged.push(r); });
+                // v42：复习报告同日去重——本地已有更新的同日合并报告时，云端同日的旧批次条目丢弃
+                const reviewDates = new Set(localList.filter(r => r.type === 'review').map(r => (r.date || '').slice(0, 10)));
+                (cloudList || []).forEach(r => {
+                    if (!r || !r.generatedAt || seen.has(r.generatedAt)) return;
+                    if (r.type === 'review' && reviewDates.has((r.date || '').slice(0, 10))) return;
+                    merged.push(r);
+                });
                 return this.prune(merged);
             },
             byType(type) { return this.load().filter(r => r.type === type).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt)); },
@@ -531,16 +537,27 @@
                 let t = `[${report.title}]\n日期: ${report.date}\n`;
                 if (report.source) t += `来源: ${report.source}\n`;
                 t += `${report.summary}\n\n【逐词/逐句记录】\n`;
-                (report.items || []).forEach((it, i) => {
-                    t += `${i + 1}. ${it.word}`;
-                    if (it.result) t += ` | 结果: ${it.result}`;
-                    if (it.streak !== undefined) t += ` | 连续: ${it.streak}`;
-                    if (it.en) t += ` | EN: ${it.en}`;
-                    if (it.zh) t += ` | ZH: ${it.zh}`;
-                    if (it.actualInput) t += ` | 实际输入: ${it.actualInput}`;
-                    t += '\n';
-                    (it.trace || []).slice(0, 20).forEach(tr => t += `    ${tr}\n`);
-                });
+                // v42：复习报告带批次结构时，逐词记录按批分节（批号 + 完成时间小标题）
+                if (report.type === 'review' && report.batches && report.batches.length > 1) {
+                    report.batches.forEach(b => {
+                        t += `\n—— 批 ${b.no} · ${b.time || ''} ——\n`;
+                        (b.items || []).forEach((it, i) => { t += this._itemLine(it, i) + '\n'; (it.trace || []).slice(0, 20).forEach(tr => t += `    ${tr}\n`); });
+                    });
+                } else {
+                    (report.items || []).forEach((it, i) => {
+                        t += this._itemLine(it, i) + '\n';
+                        (it.trace || []).slice(0, 20).forEach(tr => t += `    ${tr}\n`);
+                    });
+                }
+                return t;
+            },
+            _itemLine(it, i) {
+                let t = `${i + 1}. ${it.word}`;
+                if (it.result) t += ` | 结果: ${it.result}`;
+                if (it.streak !== undefined) t += ` | 连续: ${it.streak}`;
+                if (it.en) t += ` | EN: ${it.en}`;
+                if (it.zh) t += ` | ZH: ${it.zh}`;
+                if (it.actualInput) t += ` | 实际输入: ${it.actualInput}`;
                 return t;
             }
         };
@@ -1004,12 +1021,33 @@
                 generatedAt: new Date().toISOString(), type: 'review', title: 'Review-Report',
                 date: localDateTimeStr(),
                 summary: `复习 ${revState.stats.total} 个词 | 记得 ${revState.stats.remembered} | 模糊 ${revState.stats.fuzzy} | 忘记 ${revState.stats.forgotten}`,
-                items: revState.items
+                items: revState.items,
+                // v42：批次结构——同日多批合并展示时用（批号由归档时按当日序号补）
+                batch: { time: localDateTimeStr().slice(11), stats: { ...revState.stats }, items: revState.items }
             };
         }
         function archiveReviewReport() {
             if (revState.items.length === 0) return;
-            reportStore.add(buildReviewReport()); saveToCloud(true);
+            const report = buildReviewReport();
+            // v42：同日多批合并——今天已有复习报告则并入（总数/记得/模糊/忘记累加，逐词记录追加为批次小节），不新建
+            const todayPrefix = localDateStr();
+            const existing = reportStore.load().find(r => r.type === 'review' && (r.date || '').startsWith(todayPrefix));
+            if (existing) {
+                existing.generatedAt = report.generatedAt; existing.date = report.date;
+                const batchNo = (existing.batches?.length || 0) + 1;
+                existing.batches = [...(existing.batches || []), { no: batchNo, ...report.batch }];
+                const s = existing.batches.reduce((acc, b) => ({ total: acc.total + b.stats.total, remembered: acc.remembered + b.stats.remembered, fuzzy: acc.fuzzy + b.stats.fuzzy, forgotten: acc.forgotten + b.stats.forgotten }), { total: 0, remembered: 0, fuzzy: 0, forgotten: 0 });
+                existing.summary = `复习 ${s.total} 个词 | 记得 ${s.remembered} | 模糊 ${s.fuzzy} | 忘记 ${s.forgotten}`;
+                existing.items = existing.batches.flatMap(b => b.items);
+                // 直接替换列表中的旧条目（add() 的 merge 按 generatedAt 去重，而 generatedAt 已更新，旧条目不会被替换）
+                const list = reportStore.load().filter(r => r !== existing);
+                list.push(existing);
+                reportStore.save(reportStore.prune(list));
+            } else {
+                report.batches = [{ no: 1, ...report.batch }];
+                reportStore.add(report);
+            }
+            saveToCloud(true);
         }
         function showReviewSummary() {
             document.getElementById('reviewTopBar').classList.add('hidden');
@@ -1027,7 +1065,11 @@
             showView('homeView');
         }
         function exportReviewPrompt() {
-            navigator.clipboard.writeText(reportStore.getText(buildReviewReport())).then(() => showToast('复习报告已复制')).catch(() => showToast('复制失败'));
+            // v42：复制"今日汇总"——同日多批已合并为一份报告（archive 时按 date 前缀匹配），直接取今日报告全文
+            const todayPrefix = localDateStr();
+            const todayReport = reportStore.load().find(r => r.type === 'review' && (r.date || '').startsWith(todayPrefix));
+            const target = todayReport || buildReviewReport();
+            navigator.clipboard.writeText(reportStore.getText(target)).then(() => showToast(todayReport ? '今日复习汇总已复制' : '复习报告已复制')).catch(() => showToast('复制失败'));
         }
 
         function switchSpellingTrack(track) {
