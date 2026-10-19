@@ -138,6 +138,7 @@
             <p id="spellSetupSubtitle" class="text-xs text-slate-500 mb-8">隐写抽拉循环 · 构建基础单词记忆</p>
             <div class="text-5xl font-light text-slate-900 mb-4" id="spellDueCount">0</div>
             <p class="text-xs text-slate-500 mb-8" id="spellDueLabel">今日待默写词汇</p>
+            <p id="spellGateInfo" class="hidden text-[11px] text-slate-400 font-mono text-center -mt-6 mb-6"></p>
             
             <div id="spellLockWarningArea" class="hidden mb-6 text-left bg-slate-50 border border-slate-100 p-3.5 rounded-md text-xs text-slate-600">
                 <div class="font-normal mb-1 flex items-center text-slate-800">
@@ -479,8 +480,10 @@
         // v37：复习毕业门槛——连续记得 10 次（跨天每日制）后退休
         // v38：默写轨同规则——连胜 10 次后默写退休，与复习频率/次数一致
         const GRADUATE_STREAK = 10;
+        // v43：默写入场闸门——在册上限。今日入场名额 = max(0, CAP - 在册数)，超额排队 FIFO
+        const SPELL_ADMIT_CAP = 50;
         // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
-        const APP_VERSION = 'v42';
+        const APP_VERSION = 'v44';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -824,6 +827,14 @@
                 if (w.lemma === undefined) w.lemma = w.word;   // 主词=页面形式，原形存 lemma；存量原形词 lemma=word
                 if (w.form === undefined) w.form = '';         // 变位情况标注，原形词留空
                 if (w.unit === undefined) w.unit = '';
+                // v43：默写入场闸门迁移（幂等）——已有默写记录的存量词视为已在册；其余为排队中
+                if (w.spellAdmittedAt === undefined) {
+                    w.spellAdmittedAt = ((w.spellReviewCount || 0) > 0) ? Date.now() : null;
+                }
+                // v44：影子词条标记——重遇导入的同词同义行，不占名额不入队列
+                if (w.shadowOf === undefined) w.shadowOf = null;
+                // v44：重学记录——每次重遇重启的日期数组（含首次导入日，数组首=第一次遇到）
+                if (w.reenrolledAt === undefined && (w.reviewCount || 0) === 0) w.reenrolledAt = null;
             });
         }
 
@@ -892,10 +903,11 @@
         function removeAccent(str) { return str.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
         function updateDashboard() {
-            const now = Date.now(); 
+            const now = Date.now();
             // v37：毕业词（graduatedAt 已设）不进入复习队列；默写队列不受影响
-            dueQueue = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt && v.nextReview <= now && v.status !== 'pending');
-            const wordCount = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt).length;
+            // v44：影子词条（重遇记录行）退出复习队列——其正身被重置后代表它重新学习
+            dueQueue = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt && v.nextReview <= now && v.status !== 'pending' && !v.shadowOf);
+            const wordCount = vocabList.filter(v => v.itemType !== 'sentence' && !v.graduatedAt && !v.shadowOf).length;
             document.getElementById('totalCount').innerText = wordCount; 
             document.getElementById('dueCount').innerText = dueQueue.length;
             const startBtn = document.getElementById('startBtn'); startBtn.disabled = dueQueue.length === 0;
@@ -1110,10 +1122,43 @@
             return { isLocked: weakWords.length > 0, weakWords: [...new Set(weakWords)] };
         }
 
+        // ===== v43 默写入场闸门 =====
+        // 判重键：word + 释义（EN）归一化一致 = 同一词义。mala 生病的 / mala 坏的 = 两个合法词条
+        function wordSenseKey(v) {
+            return `${(cleanPunc(v.word || '') || '').toLowerCase()}|${(v.meaning_en || '').trim().toLowerCase()}|${v.itemType || 'word'}`;
+        }
+        // 在册数：已入场、未毕业的词汇轨词条（影子永不入场，天然不参与）
+        function spellEnrolledCount() {
+            return vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.shadowOf && v.spellAdmittedAt && !v.spellGraduatedAt).length;
+        }
+        // 词汇轨准入后传。wpList：够资格的排队词（rememberStreak>=3，未入场，非影子）
+        // 今日名额 = max(0, CAP - 在册数)；排队按词库数组序（导入序 = 最旧在前，FIFO 等最久先入场）
+        // 入场即写入 spellAdmittedAt 持久化——中途退出/刷新不退名额
+        // 防御层：入场瞬间再查一次同词同义在册正身（历史重复在第 N 行走到闸门时自动转影子）
+        function applyAdmissionGate(wpList) {
+            const enrolled = spellEnrolledCount();
+            let slots = Math.max(0, SPELL_ADMIT_CAP - enrolled);
+            const admitted = [];
+            for (const w of wpList) {
+                if (slots <= 0) break;
+                const dupMaster = vocabList.find(v => v.shadowOf === null && v.id !== w.id
+                    && (v.itemType === w.itemType) && wordSenseKey(v) === wordSenseKey(w)
+                    && v.spellAdmittedAt && !v.spellGraduatedAt);
+                if (dupMaster) { w.shadowOf = dupMaster.id; continue; }  // 历史重复行：转影子，不耗名额
+                w.spellAdmittedAt = Date.now();
+                slots--; admitted.push(w);
+            }
+            return admitted;
+        }
+
         function updateSpellingDashboard() {
             const now = Date.now(); let dueList = []; let lockedCount = 0; let lockedHtml = '';
+            // v43：词汇轨分两组——已入场到期（照旧每日制）+ 够资格排队（闸门管准入）
+            const enrolledDue = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.shadowOf && v.spellAdmittedAt && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            const queued = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.shadowOf && !v.spellAdmittedAt && (v.rememberStreak || 0) >= 3);
+            const slots = Math.max(0, SPELL_ADMIT_CAP - spellEnrolledCount());
             if (currentSpellingTrack === 'word') {
-                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+                dueList = enrolledDue;
             } else {
                 const allDueSentences = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now));
                 allDueSentences.forEach(s => {
@@ -1128,6 +1173,18 @@
                 } else lockArea.classList.add('hidden');
             }
             document.getElementById('spellDueCount').innerText = dueList.length;
+            // v43：词汇轨仪表盘显示阀门状态（在册数 · 今日名额 · 排队数）
+            if (currentSpellingTrack === 'word') {
+                const gateEl = document.getElementById('spellGateInfo');
+                if (gateEl) {
+                    if (slots <= 0) {
+                        gateEl.innerHTML = `在册 ${spellEnrolledCount()}/${SPELL_ADMIT_CAP} · 额满，新词排队中（队列 ${queued.length} 词）`;
+                    } else {
+                        gateEl.innerHTML = `在册 ${spellEnrolledCount()}/${SPELL_ADMIT_CAP} · 今日可入场 ${slots} · 排队 ${queued.length}`;
+                    }
+                    gateEl.classList.remove('hidden');
+                }
+            }
             const startBtn = document.getElementById('spellStartBtn'); startBtn.disabled = dueList.length === 0;
             startBtn.innerText = dueList.length > 0 ? `进入默写 (${currentSpellingTrack === 'word' ? '词汇' : '句法'})` : "今天该舱已清空";
         }
@@ -1139,9 +1196,15 @@
 
         function startSpelling() {
             const now = Date.now(); let dueList = [];
-            if (currentSpellingTrack === 'word') dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            if (currentSpellingTrack === 'word') {
+                // v43：先跑闸门——够资格的排队词按今日名额 FIFO 入场（入场即持久化 spellAdmittedAt）
+                const queued = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.shadowOf && !v.spellAdmittedAt && (v.rememberStreak || 0) >= 3);
+                applyAdmissionGate(queued);
+                // 已入场的到期词照旧每日制
+                dueList = vocabList.filter(v => (v.itemType !== 'sentence') && v.status !== 'pending' && !v.shadowOf && v.spellAdmittedAt && !v.spellGraduatedAt && (v.rememberStreak || 0) >= 3 && (v.spellReviewCount === 0 || v.spellNextReview <= now));
+            }
             else dueList = vocabList.filter(v => (v.itemType === 'sentence') && v.status !== 'pending' && (v.spellReviewCount === 0 || v.spellNextReview <= now)).filter(s => !checkSentenceLock(s).isLocked);
-            if (dueList.length === 0) return;
+            if (dueList.length === 0) { updateSpellingDashboard(); return; }
 
             // v41：排序统一"最新优先"（词库倒序：新词先上，老词收尾）
             dueList = dueList.slice().reverse();
@@ -1166,6 +1229,8 @@
             document.getElementById('spellingSetup').classList.add('hidden');
             document.getElementById('spellingActive').classList.remove('hidden'); document.getElementById('spellingActive').classList.add('flex');
             isSpellingEditing = false;
+            // v43：闸门刚消耗了入场名额（spellAdmittedAt 已写入），立即落盘防刷新丢失
+            saveToCloud(true);
             renderSpellingItem();
         }
 
@@ -2062,6 +2127,7 @@ Rules:
                             ${item.word}
                             ${!isSentence && item.lemma && item.lemma !== item.word ? `<span class="text-[11px] font-mono text-slate-400 block mt-0.5">${item.lemma}${item.form ? ' · ' + item.form : ''}</span>` : ''}
                             ${item.pos && !isSentence ? `<span class="text-[11px] font-mono text-slate-400 ml-1.5">${item.pos}</span>` : ''}
+                            ${!isSentence && item.shadowOf ? `<span class="text-[10px] text-slate-300 block mt-0.5">🔁 重遇记录（正身重新学习中）</span>` : ''}
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-normal min-w-[150px]">
                             <div class="font-normal text-slate-900 text-sm mb-0.5">${item.meaning_en || '-'}</div>
@@ -2090,7 +2156,8 @@ Rules:
         }
 
         function exportFilteredDictionary() {
-            const list = getFilteredDictionaryList();
+            // v44：影子词条（重遇记录）不进复习清单
+            const list = getFilteredDictionaryList().filter(v => !v.shadowOf);
             if (list.length === 0) return showToast('筛选列表为空！');
             
             const filterSource = document.getElementById('dictSourceFilter') ? document.getElementById('dictSourceFilter').value : 'all';
@@ -2253,6 +2320,43 @@ Rules:
                     });
                     inputData = merged;
 
+                    // ===== v44：重遇合并（导入时技术去重）=====
+                    // 同词同义已在词库（含影子链正身）→ 不新增行：
+                    //   正身上进（word/lemma/example/pos/source/unit 覆盖 + 进度清零重学重走全程 + 毕业状态撤销）
+                    //   新行转影子（shadowOf = 正身 id，仅作"第几次遇到+时间"的记录，不占名额不入队列）
+                    // 检查在弹窗前做，弹窗内显式告知用户哪些词会被重学
+                    const reencounterWords = [];
+                    const validNewItems = [];
+                    inputData.forEach(w => {
+                        const master = vocabList.find(v => v.shadowOf === null
+                            && v.itemType === w.itemType && wordSenseKey(v) === wordSenseKey(w));
+                        const chainMaster = master ? (master.shadowOf === null ? master : master) : null;
+                        if (!chainMaster) { validNewItems.push(w); return; }
+                        // 重遇①：正身覆盖（学 NEW 行的优质字段）
+                        if (w.example && (!chainMaster.example || w.example.length > chainMaster.example.length)) chainMaster.example = w.example;
+                        if (w.meaning_zh && !chainMaster.meaning_zh) chainMaster.meaning_zh = w.meaning_zh;
+                        if (w.meaning_en && !chainMaster.meaning_en) chainMaster.meaning_en = w.meaning_en;
+                        if (w.pos && !chainMaster.pos) chainMaster.pos = w.pos;
+                        if (w.lemma && chainMaster.lemma && chainMaster.lemma === chainMaster.word) chainMaster.lemma = w.lemma;  // 词条首次学时 lemma 缺省=word，真原形来了可修正
+                        if (w.form && !chainMaster.form) chainMaster.form = w.form;
+                        if (w.unit && !chainMaster.unit) chainMaster.unit = w.unit;
+                        // 重遇②：正身重学重走全程——复习/默写进度清零，毕业状态撤销
+                        chainMaster.rememberStreak = 0;
+                        chainMaster.spellStreak = 0; chainMaster.spellMistakeCount = 0;
+                        chainMaster.spellReviewCount = 0;
+                        chainMaster.graduatedAt = null; chainMaster.spellGraduatedAt = null;
+                        chainMaster.spellAdmittedAt = null;  // 退出在册，重新排队（FIFO 等最久）
+                        chainMaster.reviewCount = 0; chainMaster.interval = 0; chainMaster.nextReview = Date.now();
+                        chainMaster.spellNextReview = Date.now();
+                        chainMaster.reenrolledAt = (chainMaster.reenrolledAt || []).concat(localDateStr());  // 重遇记录：第 N 次重新学习的日期
+                        // 重遇③：新行转影子——词库里保留这次重遇的原始数据，作为记录
+                        w.shadowOf = chainMaster.id;
+                        w.spellAdmittedAt = null; w.graduatedAt = null; w.spellGraduatedAt = null;
+                        validNewItems.push(w);
+                        if (!reencounterWords.includes(chainMaster.word)) reencounterWords.push(chainMaster.word);
+                    });
+                    inputData = validNewItems;
+
                     // 统计本次来源分布（含未注明归属），不改动原始 source
                     const sourceCounts = {};
                     let missingCount = 0;
@@ -2271,15 +2375,21 @@ Rules:
                     if (dupWords.length > 0) {
                         summaryHtml += `<div class="mt-2 text-amber-700 text-xs">⚠️ 本批重复已合并：${dupWords.join('、')}</div>`;
                     }
+                    if (reencounterWords.length > 0) {
+                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">🔁 ${reencounterWords.length} 词已在词库，将重置进度重新学：${reencounterWords.join('、')}</div>`;
+                    }
 
                     const doImport = async () => {
                         inputData.forEach(w => {
                             if(!w.source || w.source.trim() === '' || w.source === '-') w.source = defaultSource;
+                            // v44：重学记录首日——数组首 = 第一次遇到该词的日期
+                            if (!w.reenrolledAt) w.reenrolledAt = [localDateStr()];
                         });
                         vocabList = vocabList.concat(inputData);
                         migrateDataSchema(vocabList);
                         await saveToCloud(false); document.getElementById('jsonInput').value = '';
-                        showToast(dupWords.length > 0 ? `导入成功，⚠️ 本批重复已合并：${dupWords.join('、')}` : '导入成功');
+                        const reMsg = reencounterWords.length > 0 ? `，🔁 重遇重学 ${reencounterWords.length} 词` : '';
+                        showToast(dupWords.length > 0 ? `导入成功，⚠️ 本批重复已合并：${dupWords.join('、')}${reMsg}` : (reencounterWords.length > 0 ? `导入成功${reMsg}` : '导入成功'));
                         showView('homeView');
                     };
 
