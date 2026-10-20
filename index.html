@@ -483,7 +483,7 @@
         // v43：默写入场闸门——在册上限。今日入场名额 = max(0, CAP - 在册数)，超额排队 FIFO
         const SPELL_ADMIT_CAP = 50;
         // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
-        const APP_VERSION = 'v44';
+        const APP_VERSION = 'v45';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         
@@ -526,10 +526,13 @@
                 const seen = new Set(localList.map(r => r.generatedAt));
                 const merged = localList.slice();
                 // v42：复习报告同日去重——本地已有更新的同日合并报告时，云端同日的旧批次条目丢弃
+                // v45：默写同日合并（方案 X）后同样处理，防止 pull 回旧批次条目与本地合并条并存
                 const reviewDates = new Set(localList.filter(r => r.type === 'review').map(r => (r.date || '').slice(0, 10)));
+                const spellingDates = new Set(localList.filter(r => r.type === 'spelling').map(r => (r.date || '').slice(0, 10)));
                 (cloudList || []).forEach(r => {
                     if (!r || !r.generatedAt || seen.has(r.generatedAt)) return;
                     if (r.type === 'review' && reviewDates.has((r.date || '').slice(0, 10))) return;
+                    if (r.type === 'spelling' && spellingDates.has((r.date || '').slice(0, 10))) return;
                     merged.push(r);
                 });
                 return this.prune(merged);
@@ -541,9 +544,10 @@
                 if (report.source) t += `来源: ${report.source}\n`;
                 t += `${report.summary}\n\n【逐词/逐句记录】\n`;
                 // v42：复习报告带批次结构时，逐词记录按批分节（批号 + 完成时间小标题）
-                if (report.type === 'review' && report.batches && report.batches.length > 1) {
+                // v45：默写同日合并后同样走批次分节（含轨别标注 词汇/句法）
+                if ((report.type === 'review' || report.type === 'spelling') && report.batches && report.batches.length > 1) {
                     report.batches.forEach(b => {
-                        t += `\n—— 批 ${b.no} · ${b.time || ''} ——\n`;
+                        t += `\n—— 批 ${b.no} · ${b.time || ''}${b.track ? ` · ${b.track === 'word' ? '词汇' : '句法'}轨` : ''} ——\n`;
                         (b.items || []).forEach((it, i) => { t += this._itemLine(it, i) + '\n'; (it.trace || []).slice(0, 20).forEach(tr => t += `    ${tr}\n`); });
                     });
                 } else {
@@ -876,6 +880,14 @@
             }
 
             if(viewId === 'reviewView' && isReviewStart) {
+                // v45 修复：导航「复习」入口此前直接用 updateDashboard 的全量 dueQueue 开场（153 词一场，绕过 startReview 的 module 切批）。
+                // 统一切批——恢复中的会话（reviewPendingPool 存在 = startReview 已切过）直接续做不动
+                if (reviewPendingPool.length === 0 && dueQueue.length > REVIEW_MODULE_SIZE) {
+                    const nowRV = Date.now();
+                    const fullDue = dueQueue.slice().reverse();  // 最新优先（同 v41）
+                    dueQueue = fullDue.slice(0, REVIEW_MODULE_SIZE);
+                    reviewPendingPool = fullDue.slice(REVIEW_MODULE_SIZE);
+                }
                 if(dueQueue.length === 0) showView('homeView');
                 else { currentCardIndex = 0; renderCard(); }
             }
@@ -1190,7 +1202,7 @@
         }
 
         const SPELL_MODULE_SIZE = 20; // v39：默写分批——到期 > 20 词时按 20 切 module，做完一批出统计再做下一批
-        const REVIEW_MODULE_SIZE = 20; // v41：复习分批——与默写同规则（ SPELL_MODULE_SIZE 模式镜像）
+        const REVIEW_MODULE_SIZE = 30; // v45：复习分批 20→30（用户拍板，默写 20 不变）
         let reviewPendingPool = []; // v41：复习未做完的剩余词池（跨 module 记忆，不持久化，同 spellPendingPool）
         let spellPendingPool = []; // v39：未做完的剩余词池（跨 module 记忆，不持久化）
 
@@ -1561,13 +1573,34 @@
 
         function archiveSpellingReport() {
             if (spState.completedLogs.length === 0) return;
-            reportStore.add({
+            const report = {
                 generatedAt: new Date().toISOString(), type: 'spelling',
                 title: `Spelling-Recall-Report (${currentSpellingTrack === 'word' ? '词汇' : '句法'})`,
                 date: localDateTimeStr(),
                 summary: `共 ${spState.stats.total} 项 | 直通 ${spState.stats.passed} | 纠缠 ${spState.stats.struggled}`,
-                items: spState.completedLogs.map(l => ({ word: l.target, en: l.en, zh: l.zh, streak: l.streak, result: l.result, trace: l.trace }))
-            });
+                items: spState.completedLogs.map(l => ({ word: l.target, en: l.en, zh: l.zh, streak: l.streak, result: l.result, trace: l.trace })),
+                // v45：批次结构（同 v42 复习合并展示格式）
+                batch: { time: localDateTimeStr().slice(11), track: currentSpellingTrack, stats: { total: spState.stats.total, passed: spState.stats.passed, struggled: spState.stats.struggled }, items: spState.completedLogs.map(l => ({ word: l.target, en: l.en, zh: l.zh, streak: l.streak, result: l.result, trace: l.trace })) }
+            };
+            // v45：默写同日合并（方案 X，镜像 v42 复习合并）——今天已有默写报告则并入，一天一份
+            const todayPrefix = localDateStr();
+            const todays = reportStore.load().filter(r => r.type === 'spelling' && (r.date || '').startsWith(todayPrefix));
+            const existing = todays.length ? todays.reduce((a, b) => a.generatedAt > b.generatedAt ? a : b) : null;
+            if (existing) {
+                const existingId = existing.generatedAt;
+                existing.generatedAt = report.generatedAt; existing.date = report.date;
+                const batchNo = (existing.batches?.length || 0) + 1;
+                existing.batches = [...(existing.batches || []), { no: batchNo, ...report.batch }];
+                const s = existing.batches.reduce((acc, b) => ({ total: acc.total + b.stats.total, passed: acc.passed + b.stats.passed, struggled: acc.struggled + b.stats.struggled }), { total: 0, passed: 0, struggled: 0 });
+                existing.summary = `共 ${s.total} 项 | 直通 ${s.passed} | 纠缠 ${s.struggled}`;
+                existing.items = existing.batches.flatMap(b => b.items);
+                const list = reportStore.load().filter(r => r.generatedAt !== existingId);
+                list.push(existing);
+                reportStore.save(reportStore.prune(list));
+            } else {
+                report.batches = [{ no: 1, ...report.batch }];
+                reportStore.add(report);
+            }
             saveToCloud(true);
         }
 
