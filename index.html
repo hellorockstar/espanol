@@ -853,7 +853,8 @@
             const localData = localStorage.getItem('prismaVocab');
             if (localData && localData !== '[]') {
                 vocabList = JSON.parse(localData);
-                migrateDataSchema(vocabList);
+                // R2：新分配的 id 立即落盘（只生成一次，之后不再重算）
+                if (migrateDataSchema(vocabList) > 0) localStorage.setItem('prismaVocab', JSON.stringify(vocabList));
             }
             resetVocabSnapshot();   // R1：以启动时的本地数据为基线，迁移产生的字段变化不算用户改动
             updateDashboard(); updateAutoReadUI();
@@ -1019,6 +1020,59 @@
                 // v44：重学记录——每次重遇重启的日期数组（含首次导入日，数组首=第一次遇到）
                 if (w.reenrolledAt === undefined && (w.reviewCount || 0) === 0) w.reenrolledAt = null;
             });
+            return ensureVocabIds(list);   // R2：放在字段归一之后，保证两端对同一条旧词算出同一个 id；返回新分配 id 的条数
+        }
+
+        // ===== R2 词条 id =====
+        // FNV-1a 32 位哈希 → [1, 1e9) 的整数。Date.now() 时间戳 id 约 1.7e12，两类 id 区间不重叠
+        function hashToLegacyId(str) {
+            let h = 0x811c9dc5;
+            for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+            return (h % 999999999) + 1;
+        }
+        // 身份键：只含"这是哪条词"的字段，不含学习进度——两台设备进度不同也能算出同一个 id
+        function vocabIdentityKey(v) {
+            return [v.itemType || 'word', (v.word || '').trim().toLowerCase(), (v.meaning_en || '').trim().toLowerCase(), (v.source || '').trim(), (v.unit || '').trim()].join('|');
+        }
+        function isValidVocabId(id) { return typeof id === 'number' && Number.isFinite(id); }
+        // 幂等：已有合法且唯一 id 的词条不动；id 一旦生成即持久化并随词库推到云端，之后内容变化也不重算
+        function ensureVocabIds(list) {
+            const used = new Set();
+            const allocate = (seed) => {
+                let salt = 0, id;
+                do { id = hashToLegacyId(salt ? `${seed}#${salt}` : seed); salt++; } while (used.has(id));
+                used.add(id); return id;
+            };
+            // ① 合法 id 分组，找出重复组
+            let changed = 0;
+            const groups = new Map();
+            list.forEach(w => { if (isValidVocabId(w.id)) { const k = w.id; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(w); } });
+            groups.forEach((g, id) => used.add(id));
+            // ② 重复 id：按内容（身份键哈希 → 全量指纹）排序决定谁保留原 id，不依赖数组顺序
+            groups.forEach((g, id) => {
+                if (g.length < 2) return;
+                const ranked = g.map(w => ({ w, ik: vocabIdentityKey(w), fp: itemFingerprint(w) }))
+                    .sort((a, b) => (hashToLegacyId(a.ik) - hashToLegacyId(b.ik)) || (a.ik < b.ik ? -1 : a.ik > b.ik ? 1 : 0) || (a.fp < b.fp ? -1 : a.fp > b.fp ? 1 : 0));
+                ranked.slice(1).forEach((r, i) => { r.w.id = allocate(`dup|${id}|${r.ik}|${i}`); changed++; });
+            });
+            // ③ 缺 id / id 非数字：按身份键 + 同身份出现序号生成。
+            //    同身份的多条旧词内容本就相同，序号按数组顺序——旧版是云端整包覆盖，两端数组顺序一致
+            const occ = new Map();
+            list.forEach(w => {
+                if (isValidVocabId(w.id)) return;
+                const ik = vocabIdentityKey(w); const n = occ.get(ik) || 0; occ.set(ik, n + 1);
+                w.id = allocate(`legacy|${ik}|${n}`); changed++;
+            });
+            return changed;
+        }
+        // 新建词条 id：单调递增，同一毫秒内多次调用也不重复
+        let lastVocabId = 0;
+        function newVocabId(reserved) {
+            const used = new Set(vocabList.map(v => v.id));
+            let id = Math.max(Date.now(), lastVocabId + 1);
+            while (used.has(id) || (reserved && reserved.has(id))) id++;
+            lastVocabId = id; if (reserved) reserved.add(id);
+            return id;
         }
 
         function showView(viewId, isReviewStart = false) {
@@ -1630,7 +1684,7 @@
             
             if (!found) {
                 vocabList.push({
-                    id: Date.now(), word: lemma, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh, pos: qcResult.pos || '',
+                    id: newVocabId(), word: lemma, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh, pos: qcResult.pos || '',
                     lemma: lemma, form: '', unit: sentenceObj.unit || '',
                     example: sentenceObj.word, source: qcResult.source, itemType: 'word', status: qcResult.status,
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
@@ -1990,7 +2044,7 @@ Rules:
                 showToast('后台洗炼全句释义...');
                 const qcResult = await runAIQualityControl(cleanEs, true, sourceName);
                 vocabList.push({
-                    id: Date.now(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText,
+                    id: newVocabId(), word: qcResult.word, meaning_en: qcResult.meaning_en, meaning_zh: qcResult.meaning_zh || zhText,
                     example: '', source: qcResult.source, itemType: 'sentence', status: qcResult.status, pos: '',
                     lemma: qcResult.word, form: '', unit: '',
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
@@ -2091,7 +2145,7 @@ Rules:
             const targetWord = activeHarvestObj.word;
             if (!vocabList.find(v => (v.itemType !== 'sentence') && cleanPunc(v.word).toLowerCase() === targetWord.toLowerCase())) {
                 vocabList.push({
-                    id: Date.now(), word: targetWord, meaning_en: activeHarvestObj.meaning_en, meaning_zh: activeHarvestObj.meaning_zh, pos: activeHarvestObj.pos || '',
+                    id: newVocabId(), word: targetWord, meaning_en: activeHarvestObj.meaning_en, meaning_zh: activeHarvestObj.meaning_zh, pos: activeHarvestObj.pos || '',
                     lemma: targetWord, form: '', unit: activeHarvestObj.unit || '',
                     example: activeHarvestObj.example, source: activeHarvestObj.source, itemType: 'word', status: 'active',
                     nextReview: Date.now(), interval: 0, reviewCount: 0, rememberStreak: 0,
@@ -2414,7 +2468,7 @@ Rules:
         }
         
         async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { tombstoneStore.add(vocabList.map(v => v.id)); vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
-        async function deleteWord(id) { if(confirm('确定删除此条目？')){ tombstoneStore.add([id]); vocabList =vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
+        async function deleteWord(id) { if (!isValidVocabId(id)) { showToast('该条目缺少 id，已拒绝删除以防误删'); return; } if(confirm('确定删除此条目？')){ tombstoneStore.add([id]); vocabList =vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         function toggleSelectItem(id, checkbox) { if (checkbox.checked) selectedIds.add(id); else selectedIds.delete(id); updateBatchUI(); }
         function toggleSelectAll() { const allCb = document.getElementById('selectAllCheckbox'); const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleIds = new Set(); checkboxes.forEach(cb => { const id = parseInt(cb.dataset.id); visibleIds.add(id); if (allCb.checked) { cb.checked = true; selectedIds.add(id); } else { cb.checked = false; selectedIds.delete(id); } }); updateBatchUI(); }
         function updateBatchUI() { const count = selectedIds.size; const btn = document.getElementById('deleteSelectedBtn'); const sep = document.getElementById('batchSep'); const countEl = document.getElementById('selectedCount'); const allCb = document.getElementById('selectAllCheckbox'); if (btn) { if (count > 0) { btn.classList.remove('hidden'); if (sep) sep.classList.remove('hidden'); countEl.textContent = count; const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleCount = checkboxes.length; if (allCb) allCb.indeterminate = count > 0 && count < visibleCount; if (allCb) allCb.checked = count > 0 && count === visibleCount; } else { btn.classList.add('hidden'); if (sep) sep.classList.add('hidden'); countEl.textContent = '0'; if (allCb) { allCb.checked = false; allCb.indeterminate = false; } } } }
@@ -2536,6 +2590,21 @@ Rules:
                         if(w.unit === undefined) w.unit = '';
                     });
 
+                    // R2：导入数据自带 id 的处理（只做分类，不改词库）
+                    //   id 与词库某条相同且身份相同（类型+词+EN 释义）→ 视为同一条，跳过，不重置进度、不产生重复
+                    //   id 相同但身份不同 / id 非数字 / 本批内 id 重复 → 去掉 id，确认导入时重新分配
+                    const libById = new Map(vocabList.filter(v => isValidVocabId(v.id)).map(v => [v.id, v]));
+                    const batchIds = new Set();
+                    const sameIdSkipped = [];
+                    inputData = inputData.filter(w => {
+                        if (w.id === undefined || w.id === null) return true;
+                        if (!isValidVocabId(w.id) || batchIds.has(w.id)) { delete w.id; return true; }
+                        const existing = libById.get(w.id);
+                        if (existing && wordSenseKey(existing) === wordSenseKey(w)) { sameIdSkipped.push(w.word); return false; }
+                        if (existing) { delete w.id; return true; }
+                        batchIds.add(w.id); return true;
+                    });
+
                     // 同批去重：word 相同（忽略大小写/重音）仅保留一条；example 长的优先，相同保留先出现
                     // 不同变位 word 不同 → 视为不同词条，不去重
                     const seen = new Map();
@@ -2562,13 +2631,17 @@ Rules:
                     //   正身上进（word/lemma/example/pos/source/unit 覆盖 + 进度清零重学重走全程 + 毕业状态撤销）
                     //   新行转影子（shadowOf = 正身 id，仅作"第几次遇到+时间"的记录，不占名额不入队列）
                     // 检查在弹窗前做，弹窗内显式告知用户哪些词会被重学
+                    // R2/N1：弹窗前只收集「导入行 → 正身」配对，不改动词库；进度清零与转影子在用户确认后（doImport）才执行
                     const reencounterWords = [];
-                    const validNewItems = [];
+                    const reencounterPairs = [];
                     inputData.forEach(w => {
-                        const master = vocabList.find(v => v.shadowOf === null
+                        const chainMaster = vocabList.find(v => v.shadowOf === null
                             && v.itemType === w.itemType && wordSenseKey(v) === wordSenseKey(w));
-                        const chainMaster = master ? (master.shadowOf === null ? master : master) : null;
-                        if (!chainMaster) { validNewItems.push(w); return; }
+                        if (!chainMaster) return;
+                        reencounterPairs.push({ w, chainMaster });
+                        if (!reencounterWords.includes(chainMaster.word)) reencounterWords.push(chainMaster.word);
+                    });
+                    const applyReencounter = ({ w, chainMaster }) => {
                         // 重遇①：正身覆盖（学 NEW 行的优质字段）
                         if (w.example && (!chainMaster.example || w.example.length > chainMaster.example.length)) chainMaster.example = w.example;
                         if (w.meaning_zh && !chainMaster.meaning_zh) chainMaster.meaning_zh = w.meaning_zh;
@@ -2589,10 +2662,7 @@ Rules:
                         // 重遇③：新行转影子——词库里保留这次重遇的原始数据，作为记录
                         w.shadowOf = chainMaster.id;
                         w.spellAdmittedAt = null; w.graduatedAt = null; w.spellGraduatedAt = null;
-                        validNewItems.push(w);
-                        if (!reencounterWords.includes(chainMaster.word)) reencounterWords.push(chainMaster.word);
-                    });
-                    inputData = validNewItems;
+                    };
 
                     // 统计本次来源分布（含未注明归属），不改动原始 source
                     const sourceCounts = {};
@@ -2615,9 +2685,17 @@ Rules:
                     if (reencounterWords.length > 0) {
                         summaryHtml += `<div class="mt-2 text-amber-700 text-xs">🔁 ${reencounterWords.length} 词已在词库，将重置进度重新学：${reencounterWords.join('、')}</div>`;
                     }
+                    if (sameIdSkipped.length > 0) {
+                        summaryHtml += `<div class="mt-2 text-slate-500 text-xs">↩︎ ${sameIdSkipped.length} 条与词库同 id 同词，视为同一条已跳过：${sameIdSkipped.join('、')}</div>`;
+                    }
+                    if (inputData.length === 0) { showToast(sameIdSkipped.length ? '所有条目已在词库中，无需导入' : '没有可导入的条目'); return; }
 
                     const doImport = async () => {
+                        reencounterPairs.forEach(applyReencounter);   // N1：用户确认后才改动正身
+                        const reserved = new Set(inputData.filter(w => isValidVocabId(w.id)).map(w => w.id));
                         inputData.forEach(w => {
+                            if (!isValidVocabId(w.id)) w.id = newVocabId(reserved);   // R2：导入即分配唯一 id
+
                             if(!w.source || w.source.trim() === '' || w.source === '-') w.source = defaultSource;
                             // v44：重学记录首日——数组首 = 第一次遇到该词的日期
                             if (!w.reenrolledAt) w.reenrolledAt = [localDateStr()];
