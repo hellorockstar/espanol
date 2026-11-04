@@ -2078,8 +2078,18 @@ Rules:
             
             showToast(`更新中: ${item.word}...`);
             const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2');
-            item.word = qc.word; item.meaning_en = qc.meaning_en; item.meaning_zh = qc.meaning_zh; item.status = 'active';
-            if(item.itemType === 'sentence') item.example = ''; 
+            // R3：AI 失败（未配置/超时/返回异常）→ 一个字段都不写，原释义保留
+            if (qc.status !== 'active') {
+                renderDictionary();
+                showToast(`更新失败，原释义已保留: ${item.word}`);
+                return;
+            }
+            // R3：只用非空值覆盖释义；不改 word（变位词不被改成原形，句子不被 AI 改写）
+            if (qc.meaning_en) item.meaning_en = qc.meaning_en;
+            if (qc.meaning_zh) item.meaning_zh = qc.meaning_zh;
+            if (item.itemType !== 'sentence' && !item.pos && qc.pos) item.pos = qc.pos;
+            item.status = 'active';
+            if(item.itemType === 'sentence') item.example = '';
             
             renderDictionary(); 
             showToast(`更新完成: ${item.word}`);
