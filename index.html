@@ -456,7 +456,7 @@
             <button onclick="fillMissingPOS()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-4">补全词性标注 (存量词)</button>
             <button onclick="exportBackup()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-8">导出备份 (JSON)</button>
             <div class="border-t border-slate-100 pt-6">
-                <button onclick="clearData()" class="w-full text-slate-500 border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地数据)</button>
+                <button onclick="clearData()" class="w-full text-slate-500 border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">重置本机数据（将从云端重新下载）</button>
             </div>
         </div>
     </main>
@@ -2487,14 +2487,35 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('复制成功')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { tombstoneStore.add(vocabList.map(v => v.id)); vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
+        // R4：清空 = 全设备删除（经墓碑同步到云端与其他设备）。需输入「清空」确认，执行前自动导出备份
+        async function clearDictionary() {
+            const n = vocabList.length;
+            if (n === 0) { showToast('词库已为空'); return; }
+            const input = prompt(`⚠ 将删除全部 ${n} 条词汇/句法，并同步清空云端和所有设备。\n执行前会自动导出一份备份；也可通过 Gist 修订历史找回。\n\n请输入「清空」确认：`);
+            if (input === null) return;
+            if (input.trim() !== '清空') { showToast('输入不匹配，已取消'); return; }
+            const backed = await exportBackup(true);
+            if (!backed && !confirm('备份导出失败，仍要继续清空吗？')) return;
+            { tombstoneStore.add(vocabList.map(v => v.id)); vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
         async function deleteWord(id) { if (!isValidVocabId(id)) { showToast('该条目缺少 id，已拒绝删除以防误删'); return; } if(confirm('确定删除此条目？')){ tombstoneStore.add([id]); vocabList =vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         function toggleSelectItem(id, checkbox) { if (checkbox.checked) selectedIds.add(id); else selectedIds.delete(id); updateBatchUI(); }
         function toggleSelectAll() { const allCb = document.getElementById('selectAllCheckbox'); const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleIds = new Set(); checkboxes.forEach(cb => { const id = parseInt(cb.dataset.id); visibleIds.add(id); if (allCb.checked) { cb.checked = true; selectedIds.add(id); } else { cb.checked = false; selectedIds.delete(id); } }); updateBatchUI(); }
         function updateBatchUI() { const count = selectedIds.size; const btn = document.getElementById('deleteSelectedBtn'); const sep = document.getElementById('batchSep'); const countEl = document.getElementById('selectedCount'); const allCb = document.getElementById('selectAllCheckbox'); if (btn) { if (count > 0) { btn.classList.remove('hidden'); if (sep) sep.classList.remove('hidden'); countEl.textContent = count; const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleCount = checkboxes.length; if (allCb) allCb.indeterminate = count > 0 && count < visibleCount; if (allCb) allCb.checked = count > 0 && count === visibleCount; } else { btn.classList.add('hidden'); if (sep) sep.classList.add('hidden'); countEl.textContent = '0'; if (allCb) { allCb.checked = false; allCb.indeterminate = false; } } } }
         async function deleteSelected() { if (selectedIds.size === 0) return; if (!confirm(`确定删除已选的 ${selectedIds.size} 个条目吗？此操作不可撤销。`)) return; tombstoneStore.add([...selectedIds]); vocabList =vocabList.filter(v => !selectedIds.has(v.id)); selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已删除'); }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); localStorage.setItem('apiBaseUrl', document.getElementById('apiBaseUrl').value.trim()); localStorage.setItem('apiModel', document.getElementById('apiModel').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
-        function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
+        // R4：只删本机学习数据，逐个 key 精准删除（不使用 localStorage.clear）；保留 gh_token / gh_gist_id / ds_token / apiBaseUrl / apiModel / autoRead
+        const RESET_KEYS = ['prismaVocab', 'report_history', 'ds_token_usage', 'ds_token_history', 'prismaVocab_tombstones', 'sync_dirty'];
+        function clearData() {
+            const cloudOn = githubAPI.isConfigured();
+            let msg = '重置本机数据：\n将删除本机的词库、学习报告、Token 统计与查词缓存。\nGitHub / API 配置会保留。\n\n';
+            msg += cloudOn ? '重新加载后会自动从云端重新下载词库。' : '⚠ 未配置云同步，删除后无法恢复！建议先在设置页导出备份。';
+            if (cloudOn && syncScheduler.isDirty()) msg += '\n\n⚠ 有改动尚未同步到云端，重置后会丢失！';
+            if (!confirm(msg)) return;
+            const dictKeys = [];
+            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('dict_v4_')) dictKeys.push(k); }
+            [...RESET_KEYS, ...dictKeys].forEach(k => localStorage.removeItem(k));
+            location.reload();
+        }
         
         // ===== B1 导出备份 =====
         // 只读：导出学习数据，不含任何密钥/配置（gh_token、gh_gist_id、ds_token、apiBaseUrl、apiModel 均不导出）
