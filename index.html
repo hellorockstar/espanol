@@ -62,7 +62,7 @@
         </nav>
     </header>
 
-    <div id="syncStatus" class="w-full max-w-md text-xs text-center text-slate-400 mb-6 h-4"></div>
+    <div id="syncStatus" onclick="retryCloudSync()" class="w-full max-w-md text-xs text-center text-slate-400 mb-6 h-4 cursor-pointer select-none"></div>
 
     <!-- 视图：主页 -->
     <main id="homeView" class="w-full max-w-md flex-1 flex flex-col items-center justify-center space-y-6">
@@ -483,7 +483,7 @@
         // v43：默写入场闸门——在册上限。今日入场名额 = max(0, CAP - 在册数)，超额排队 FIFO
         const SPELL_ADMIT_CAP = 50;
         // v38a：版本徽章改为动态——发版时更新此变量（此前为写死字符串，v30 后从未跟随版本）
-        const APP_VERSION = 'v45';
+        const APP_VERSION = 'v46';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
         // R1：删除墓碑（按条合并时防止已删词条被另一端的旧数据带回）
@@ -756,7 +756,7 @@
                     if (this._again || this.isDirty()) { this._again = false; this.schedule(); }
                 } else {
                     this._again = false;
-                    updateStatus('云端保存失败，将自动重试');
+                    updateStatus(SYNC_WARN_PUSH);   // P1：常驻，直到下次成功
                     this.schedule(this.retryDelay);
                     this.retryDelay = Math.min(this.retryDelay * 2, 5 * 60 * 1000);
                 }
@@ -764,6 +764,14 @@
             }
         };
         let cloudBaselineOk = false;   // 本会话是否已成功拉取并合并过云端
+        // P1：同步失败常驻提示（点击状态栏立即重试）
+        const SYNC_WARN_PULL = '⚠ 云端读取失败，改动未同步 · 点此重试';
+        const SYNC_WARN_PUSH = '⚠ 云端保存失败，改动未同步 · 点此重试';
+        const SYNC_WARN_DIRTY = '⚠ 有改动未同步到云端 · 点此重试';
+        function retryCloudSync() {
+            if (!githubAPI.isConfigured()) return;
+            syncFromCloud().then(ok => { if (ok && syncScheduler.isDirty()) syncScheduler.flush(); });
+        }
         let lastCloudPullAt = 0;
 
         function updateTokenDisplay() {
@@ -860,6 +868,7 @@
             updateDashboard(); updateAutoReadUI();
 
             if (githubAPI.isConfigured()) {
+                if (syncScheduler.isDirty()) updateStatus(SYNC_WARN_DIRTY);   // P1：上次会话遗留未同步改动
                 await syncFromCloud();
             }
 
@@ -1136,7 +1145,7 @@
                 updateStatus('正在同步云端...');
                 const cloud = await githubAPI.pull();
                 lastCloudPullAt = Date.now();
-                if (!cloud) { updateStatus('云端读取失败，稍后重试'); setTimeout(() => updateStatus(''), 3000); return false; }
+                if (!cloud) { updateStatus(syncScheduler.isDirty() ? SYNC_WARN_PULL : '⚠ 云端读取失败 · 点此重试'); return false; }   // P1：失败提示常驻，直到下次成功
                 stampVocabChanges();                    // 先给本地尚未盖章的改动盖章，再参与比较
                 migrateDataSchema(cloud.vocab);         // 云端可能是旧版本设备写入的，先统一字段
                 const tombs = tombstoneStore.merge(tombstoneStore.load(), cloud.tombstones);
