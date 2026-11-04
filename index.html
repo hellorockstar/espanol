@@ -453,7 +453,8 @@
             <label class="block text-xs font-normal text-slate-500 mb-2">模型 (Model)</label>
             <input type="text" id="apiModel" class="w-full border border-slate-200 rounded-md p-3 mb-8 text-sm outline-none text-slate-900 font-normal" placeholder="deepseek-v4-flash">
             <button onclick="saveSettings()" class="w-full btn-primary py-3.5 rounded-md font-medium text-base mb-4">保存配置</button>
-            <button onclick="fillMissingPOS()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-8">补全词性标注 (存量词)</button>
+            <button onclick="fillMissingPOS()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-4">补全词性标注 (存量词)</button>
+            <button onclick="exportBackup()" class="w-full btn-secondary py-3 rounded-md font-medium text-sm mb-8">导出备份 (JSON)</button>
             <div class="border-t border-slate-100 pt-6">
                 <button onclick="clearData()" class="w-full text-slate-500 border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 transition py-3 rounded-md font-medium text-sm">出厂重置 (抹除本地数据)</button>
             </div>
@@ -2485,6 +2486,38 @@ Rules:
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); localStorage.setItem('apiBaseUrl', document.getElementById('apiBaseUrl').value.trim()); localStorage.setItem('apiModel', document.getElementById('apiModel').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
         
+        // ===== B1 导出备份 =====
+        // 只读：导出学习数据，不含任何密钥/配置（gh_token、gh_gist_id、ds_token、apiBaseUrl、apiModel 均不导出）
+        function buildBackupPayload() {
+            let tokenHistory = {};
+            try { tokenHistory = JSON.parse(localStorage.getItem('ds_token_history') || '{}'); } catch(e) { tokenHistory = localStorage.getItem('ds_token_history'); }
+            return {
+                app: 'prisma-vocab-backup', appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
+                prismaVocab: vocabList,
+                report_history: reportStore.load(),
+                prismaVocab_tombstones: tombstoneStore.load(),
+                ds_token_usage: localStorage.getItem('ds_token_usage') || '0',
+                ds_token_history: tokenHistory
+            };
+        }
+        // 返回 true=已触发下载或已复制到剪贴板
+        async function exportBackup(silent = false) {
+            const text = JSON.stringify(buildBackupPayload(), null, 2);
+            const d = new Date();
+            const name = `prisma_backup_${localDateStr()}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}.json`;
+            try {
+                const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+                const a = document.createElement('a'); a.href = url; a.download = name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                if (!silent) showToast(`备份已导出：${name}（${vocabList.length} 条）`);
+                return true;
+            } catch (e) {
+                try { await navigator.clipboard.writeText(text); showToast('下载失败，备份 JSON 已复制到剪贴板'); return true; }
+                catch (e2) { showToast('备份导出失败'); return false; }
+            }
+        }
+
         async function fillMissingPOS() {
             // 硬编码词性映射（来自 vocabulary.md 已知词，避免消耗 Token）
             const KNOWN_POS = {
