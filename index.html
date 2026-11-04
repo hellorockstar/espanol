@@ -2591,8 +2591,10 @@ Rules:
                     });
 
                     // R2：导入数据自带 id 的处理（只做分类，不改词库）
-                    //   id 与词库某条相同且身份相同（类型+词+EN 释义）→ 视为同一条，跳过，不重置进度、不产生重复
-                    //   id 相同但身份不同 / id 非数字 / 本批内 id 重复 → 去掉 id，确认导入时重新分配
+                    //   id 与词库某条相同，且类型+词相同 → 视为同一条，跳过，不重置进度、不产生重复
+                    //   （不比 EN 释义：R3 的 AI 更新会改写释义，另一端更新过的同一词不应被判为不同词）
+                    //   id 相同但类型/词不同 / id 非数字 / 本批内 id 重复 → 去掉 id，确认导入时重新分配
+                    const sameWordKey = v => `${v.itemType || 'word'}|${(cleanPunc(v.word || '') || '').toLowerCase()}`;
                     const libById = new Map(vocabList.filter(v => isValidVocabId(v.id)).map(v => [v.id, v]));
                     const batchIds = new Set();
                     const sameIdSkipped = [];
@@ -2600,7 +2602,7 @@ Rules:
                         if (w.id === undefined || w.id === null) return true;
                         if (!isValidVocabId(w.id) || batchIds.has(w.id)) { delete w.id; return true; }
                         const existing = libById.get(w.id);
-                        if (existing && wordSenseKey(existing) === wordSenseKey(w)) { sameIdSkipped.push(w.word); return false; }
+                        if (existing && sameWordKey(existing) === sameWordKey(w)) { sameIdSkipped.push(w.word); return false; }
                         if (existing) { delete w.id; return true; }
                         batchIds.add(w.id); return true;
                     });
