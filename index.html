@@ -486,6 +486,8 @@
         const APP_VERSION = 'v45';
         let autoReadEnabled = localStorage.getItem('autoRead') !== 'off';
         const FILE_NAME = "prisma_vocab.json"; const TOKEN_FILE_NAME = "prisma_tokens.json"; const REPORTS_FILE_NAME = "prisma_reports.json";
+        // R1：删除墓碑（按条合并时防止已删词条被另一端的旧数据带回）
+        const TOMBSTONE_FILE_NAME = "prisma_tombstones.json";
         
         let stagingItems = [];
         let dicState = { sourceName: '', items: [], currentIndex: 0, mode: 'BLIND_FIRST', currentErrors: [], todayErrorsRecord: [], stats: { total: 0, perfect: 0, repaired: 0 } };
@@ -569,37 +571,200 @@
             }
         };
 
+        // ===== R1 墓碑存储 =====
+        // 结构 [{ id, deletedAt }]；保留 90 天。合并时：墓碑 deletedAt >= 词条 updatedAt → 该词条视为已删除
+        const tombstoneStore = {
+            KEY: 'prismaVocab_tombstones',
+            TTL: 90 * 24 * 60 * 60 * 1000,
+            load() { try { const l = JSON.parse(localStorage.getItem(this.KEY) || '[]'); return Array.isArray(l) ? this.prune(l) : []; } catch(e) { return []; } },
+            save(list) { localStorage.setItem(this.KEY, JSON.stringify(this.prune(list))); },
+            prune(list) { const cutoff = Date.now() - this.TTL; return list.filter(t => t && t.id !== undefined && t.id !== null && (t.deletedAt || 0) >= cutoff); },
+            merge(a, b) {
+                const m = new Map();
+                [...(a || []), ...(b || [])].forEach(t => {
+                    if (!t || t.id === undefined || t.id === null) return;
+                    const k = String(t.id); const prev = m.get(k);
+                    if (!prev || (t.deletedAt || 0) > (prev.deletedAt || 0)) m.set(k, { id: t.id, deletedAt: t.deletedAt || 0 });
+                });
+                return this.prune([...m.values()]);
+            },
+            add(ids) {
+                const now = Date.now();
+                const fresh = [...ids].filter(id => id !== undefined && id !== null).map(id => ({ id, deletedAt: now }));
+                if (fresh.length) this.save(this.merge(this.load(), fresh));
+            }
+        };
+
+        // 读取 Gist 单个文件全文：超 1MB 时 API 返回 truncated=true 且 content 被截断，需改读 raw_url（M2）
+        async function readGistFile(file) {
+            if (!file) return null;
+            if (file.truncated) {
+                if (!file.raw_url) throw new Error('truncated without raw_url');
+                const r = await fetch(file.raw_url);
+                if (!r.ok) throw new Error('raw 读取失败');
+                return await r.text();
+            }
+            return typeof file.content === 'string' ? file.content : null;
+        }
+
         const githubAPI = {
             isConfigured: () => apiConfig.getGhToken() && apiConfig.getGistId(),
+            // R1：返回 { vocab, tombstones }；任何一步失败返回 null（调用方据此不合并、不推送，避免用残缺数据覆盖）
             pull: async function() {
                 if (!this.isConfigured()) return null;
                 try {
                     const res = await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, { headers: { 'Authorization': `token ${apiConfig.getGhToken()}` } });
                     if (!res.ok) throw new Error('读取失败'); const data = await res.json();
-                    if (data.files[TOKEN_FILE_NAME]?.content) localStorage.setItem('ds_token_history', data.files[TOKEN_FILE_NAME].content);
+                    const files = data.files || {};
+                    const vocabText = await readGistFile(files[FILE_NAME]);
+                    const vocab = vocabText ? JSON.parse(vocabText) : [];
+                    if (!Array.isArray(vocab)) throw new Error('词库格式错误');
+                    let tombstones = [];
+                    const tombText = await readGistFile(files[TOMBSTONE_FILE_NAME]);
+                    if (tombText) { const t = JSON.parse(tombText); if (Array.isArray(t)) tombstones = t; }
+                    const tokenText = await readGistFile(files[TOKEN_FILE_NAME]);
+                    if (tokenText) localStorage.setItem('ds_token_history', tokenText);
                     // v33：报告合并回本地（按 generatedAt 去重取并集，保留 7 天），本地新报告不被云端旧数据覆盖
-                    if (data.files[REPORTS_FILE_NAME]?.content) {
-                        try { reportStore.save(reportStore.merge(reportStore.load(), JSON.parse(data.files[REPORTS_FILE_NAME].content))); } catch(e) {}
-                    }
-                    return data.files[FILE_NAME]?.content ? JSON.parse(data.files[FILE_NAME].content) : [];
+                    try {
+                        const repText = await readGistFile(files[REPORTS_FILE_NAME]);
+                        if (repText) reportStore.save(reportStore.merge(reportStore.load(), JSON.parse(repText)));
+                    } catch(e) {}
+                    return { vocab, tombstones };
                 } catch (e) { return null; }
             },
+            // R1：检查 res.ok，失败如实返回 false
             push: async function(dataArray) {
                 if (!this.isConfigured()) return false;
                 try {
-                    await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, {
+                    const res = await fetch(`https://api.github.com/gists/${apiConfig.getGistId()}`, {
                         method: 'PATCH', headers: { 'Authorization': `token ${apiConfig.getGhToken()}` },
                         body: JSON.stringify({
                             files: {
                                 [FILE_NAME]: { content: JSON.stringify(dataArray, null, 2) },
                                 [TOKEN_FILE_NAME]: { content: localStorage.getItem('ds_token_history') || '{}' },
-                                [REPORTS_FILE_NAME]: { content: JSON.stringify(reportStore.load(), null, 2) }
+                                [REPORTS_FILE_NAME]: { content: JSON.stringify(reportStore.load(), null, 2) },
+                                [TOMBSTONE_FILE_NAME]: { content: JSON.stringify(tombstoneStore.load()) }
                             }
                         })
-                    }); return true;
+                    });
+                    return res.ok;
                 } catch (e) { return false; }
             }
         };
+
+        // ===== R1 按条合并 =====
+        function hasVocabId(item) { return item && item.id !== undefined && item.id !== null; }
+        // 稳定序列化（键排序）：用于判断词条内容是否变化，不受字段顺序影响
+        function stableStringify(v) {
+            if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+            if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+            return JSON.stringify(v === undefined ? null : v);
+        }
+        function itemFingerprint(item) { const { updatedAt, ...rest } = item; return stableStringify(rest); }
+
+        // 改动盖章：在 saveToCloud 唯一入口，对比上次快照，内容变化的词条写 updatedAt（避免逐个修改点手动加，漏一处即丢数据）
+        let vocabSnapshot = new Map();
+        function resetVocabSnapshot() {
+            vocabSnapshot = new Map();
+            vocabList.forEach(item => { if (hasVocabId(item)) vocabSnapshot.set(String(item.id), itemFingerprint(item)); });
+        }
+        function stampVocabChanges() {
+            const now = Date.now(); const next = new Map();
+            vocabList.forEach(item => {
+                if (!hasVocabId(item)) return;
+                const key = String(item.id); const fp = itemFingerprint(item);
+                const prev = vocabSnapshot.get(key);
+                if (prev === undefined ? !item.updatedAt : prev !== fp) item.updatedAt = now;
+                next.set(key, fp);
+            });
+            vocabSnapshot = next;
+        }
+
+        // 合并规则：按 id 取并集；同 id 取 updatedAt 较大者（本地缺省时以云端为准，平局保留本地）；墓碑 deletedAt >= updatedAt 则删除。
+        // 本地对象原地更新（Object.assign），不替换——进行中的复习/默写队列持有的对象引用继续有效（N3）。
+        // 无 id 的旧条目：保留本地；仅当本地词库为空时取云端（R2 补 id 后此分支不再出现）。
+        // 同 id 重复条目：本地全部保留，不在合并中折叠（R2 处理重复 id）。
+        function mergeVocab(localList, cloudList, tombstones) {
+            const dead = new Map(tombstones.map(t => [String(t.id), t.deletedAt || 0]));
+            const isDead = it => hasVocabId(it) && dead.has(String(it.id)) && dead.get(String(it.id)) >= (it.updatedAt || 0);
+            const cloudFirst = new Map(); const cloudRest = [];
+            (cloudList || []).forEach(c => {
+                if (!c || typeof c !== 'object') return;
+                if (!hasVocabId(c)) { cloudRest.push(c); return; }
+                const k = String(c.id);
+                if (!cloudFirst.has(k)) cloudFirst.set(k, [c]); else cloudFirst.get(k).push(c);
+            });
+            const result = []; const matched = new Set();
+            localList.forEach(it => {
+                if (hasVocabId(it)) {
+                    const k = String(it.id); const group = cloudFirst.get(k);
+                    if (group && !matched.has(k)) {
+                        matched.add(k);
+                        const c = group[0];
+                        // 本地无 updatedAt = 自 R1 上线后本地未改过 → 云端为准（与旧版"云端覆盖"语义一致，防止旧设备的陈旧数据反推覆盖云端）
+                        const lu = it.updatedAt || 0, cu = c.updatedAt || 0;
+                        if (cu > lu || lu === 0) {
+                            Object.keys(it).forEach(key => delete it[key]);
+                            Object.assign(it, c);
+                        }
+                    }
+                }
+                if (!isDead(it)) result.push(it);
+            });
+            const localIds = new Set(localList.filter(hasVocabId).map(it => String(it.id)));
+            cloudFirst.forEach((group, k) => { if (!localIds.has(k)) group.forEach(c => { if (!isDead(c)) result.push(c); }); });
+            if (localList.length === 0) cloudRest.forEach(c => result.push(c));
+            return result;
+        }
+        function sameItemSet(a, b) {
+            if ((a || []).length !== (b || []).length) return false;
+            const sa = a.map(stableStringify).sort(); const sb = b.map(stableStringify).sort();
+            return sa.every((s, i) => s === sb[i]);
+        }
+
+        // ===== R1 云端推送调度：防抖 + 串行 + 脏标记持久化 =====
+        const syncScheduler = {
+            KEY: 'sync_dirty', DELAY: 2000,
+            timer: null, inFlight: null, gen: 0, retryDelay: 30000,
+            markDirty() { this.gen++; try { localStorage.setItem(this.KEY, '1'); } catch(e) {} },
+            isDirty() { return localStorage.getItem(this.KEY) === '1'; },
+            schedule(delay = this.DELAY) {
+                clearTimeout(this.timer);
+                this.timer = setTimeout(() => this.flush(), delay);
+            },
+            // 同一时刻只有一个推送；推送中途又有新改动（gen 变化）→ 结束后再推一次
+            async flush() {
+                clearTimeout(this.timer); this.timer = null;
+                if (!githubAPI.isConfigured() || !this.isDirty()) return true;
+                if (this.inFlight) { this._again = true; return this.inFlight; }
+                this.inFlight = (async () => {
+                    // 本会话尚未成功拉取过云端 → 先拉取合并，否则可能用本地旧数据覆盖其他设备的改动
+                    if (!cloudBaselineOk) {
+                        const ok = await syncFromCloud({ fromFlush: true });
+                        if (!ok) return false;
+                    }
+                    const genAtStart = this.gen;
+                    const ok = await githubAPI.push(vocabList);
+                    if (ok && this.gen === genAtStart) { try { localStorage.removeItem(this.KEY); } catch(e) {} }
+                    return ok;
+                })();
+                let ok = false;
+                try { ok = await this.inFlight; } finally { this.inFlight = null; }
+                if (ok) {
+                    this.retryDelay = 30000;
+                    updateStatus('已保存'); setTimeout(() => { if (document.getElementById('syncStatus').innerText === '已保存') updateStatus(''); }, 2000);
+                    if (this._again || this.isDirty()) { this._again = false; this.schedule(); }
+                } else {
+                    this._again = false;
+                    updateStatus('云端保存失败，将自动重试');
+                    this.schedule(this.retryDelay);
+                    this.retryDelay = Math.min(this.retryDelay * 2, 5 * 60 * 1000);
+                }
+                return ok;
+            }
+        };
+        let cloudBaselineOk = false;   // 本会话是否已成功拉取并合并过云端
+        let lastCloudPullAt = 0;
 
         function updateTokenDisplay() {
             let tokens = parseInt(localStorage.getItem('ds_token_usage') || '0');
@@ -690,11 +855,25 @@
                 vocabList = JSON.parse(localData);
                 migrateDataSchema(vocabList);
             }
+            resetVocabSnapshot();   // R1：以启动时的本地数据为基线，迁移产生的字段变化不算用户改动
             updateDashboard(); updateAutoReadUI();
 
             if (githubAPI.isConfigured()) {
                 await syncFromCloud();
             }
+
+            // R1：回到页面时拉取合并（60s 节流）；离开页面时立即推送未同步改动；网络恢复时补推
+            document.addEventListener('visibilitychange', () => {
+                if (!githubAPI.isConfigured()) return;
+                if (document.visibilityState === 'hidden') {
+                    if (syncScheduler.isDirty()) syncScheduler.flush();
+                } else if (Date.now() - lastCloudPullAt > 60000) {
+                    syncFromCloud();
+                } else if (syncScheduler.isDirty()) {
+                    syncScheduler.schedule(0);
+                }
+            });
+            window.addEventListener('online', () => { if (githubAPI.isConfigured() && syncScheduler.isDirty()) syncScheduler.schedule(0); });
 
             document.addEventListener('click', (e) => {
                 const popover = document.getElementById('inlinePopover');
@@ -893,22 +1072,47 @@
             }
         }
 
-        async function syncFromCloud() {
-            if (!githubAPI.isConfigured()) return; updateStatus('正在同步云端...');
-            const cloudData = await githubAPI.pull();
-            if (cloudData && cloudData.length > 0) {
-                vocabList = cloudData;
-                migrateDataSchema(vocabList);
-                localStorage.setItem('prismaVocab', JSON.stringify(vocabList)); 
-                updateDashboard(); updateStatus('同步完成'); setTimeout(()=>updateStatus(''), 2000);
-            } else updateStatus('');
+        // R1：拉取 → 按条合并 → 写本地 → 若合并结果与云端不同则安排推送。
+        // 并发调用复用同一个进行中的 Promise。返回 true=成功合并，false=拉取失败（本地数据不动）。
+        let syncInFlight = null;
+        function syncFromCloud(opts = {}) {
+            if (!githubAPI.isConfigured()) return Promise.resolve(false);
+            if (syncInFlight) return syncInFlight;
+            syncInFlight = (async () => {
+                updateStatus('正在同步云端...');
+                const cloud = await githubAPI.pull();
+                lastCloudPullAt = Date.now();
+                if (!cloud) { updateStatus('云端读取失败，稍后重试'); setTimeout(() => updateStatus(''), 3000); return false; }
+                stampVocabChanges();                    // 先给本地尚未盖章的改动盖章，再参与比较
+                migrateDataSchema(cloud.vocab);         // 云端可能是旧版本设备写入的，先统一字段
+                const tombs = tombstoneStore.merge(tombstoneStore.load(), cloud.tombstones);
+                vocabList = mergeVocab(vocabList, cloud.vocab, tombs);
+                tombstoneStore.save(tombs);
+                localStorage.setItem('prismaVocab', JSON.stringify(vocabList));
+                resetVocabSnapshot();                   // 合并进来的云端内容不算本地改动
+                cloudBaselineOk = true;
+                const needPush = !sameItemSet(vocabList, cloud.vocab)
+                    || !sameItemSet(tombstoneStore.load(), tombstoneStore.prune(cloud.tombstones));
+                if (needPush) syncScheduler.markDirty();
+                if (!opts.fromFlush && syncScheduler.isDirty()) syncScheduler.schedule(0);
+                // 只刷新安全的视图：复习/默写进行中不调用 updateDashboard（它会重建 dueQueue 打乱当前会话）
+                if (!document.getElementById('homeView').classList.contains('hidden')) updateDashboard();
+                if (!document.getElementById('dictionaryView').classList.contains('hidden') && editingId === null) renderDictionary();
+                updateStatus('同步完成'); setTimeout(() => { if (document.getElementById('syncStatus').innerText === '同步完成') updateStatus(''); }, 2000);
+                return true;
+            })();
+            return syncInFlight.finally(() => { syncInFlight = null; });
         }
 
+        // R1：本地立即落盘；云端标脏后防抖推送（silent=false 时立即推送并等待结果）。
+        // 所有修改点仍统一调用此函数，调用方无需改动。
         async function saveToCloud(silent = false) {
-            localStorage.setItem('prismaVocab', JSON.stringify(vocabList)); 
+            stampVocabChanges();
+            localStorage.setItem('prismaVocab', JSON.stringify(vocabList));
             if (!githubAPI.isConfigured()) return;
-            if(!silent) updateStatus('保存中...'); const success = await githubAPI.push(vocabList);
-            if(success) { updateStatus('已保存'); setTimeout(()=>updateStatus(''), 2000); }
+            syncScheduler.markDirty();
+            if (!silent) { updateStatus('保存中...'); await syncScheduler.flush(); }
+            else syncScheduler.schedule();
         }
 
         function cleanPunc(str) { return str.replace(/[^\w\sáéíóúñÁÉÍÓÚÑüÜ¿¡]/gi, ''); }
@@ -2209,12 +2413,12 @@ Rules:
             navigator.clipboard.writeText(md).then(() => showToast('复制成功')).catch(() => showToast('复制失败'));
         }
         
-        async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
-        async function deleteWord(id) { if(confirm('确定删除此条目？')){ vocabList = vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
+        async function clearDictionary() { if(confirm('确定清空所有数据吗？')) { tombstoneStore.add(vocabList.map(v => v.id)); vocabList = []; selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已清空'); } }
+        async function deleteWord(id) { if(confirm('确定删除此条目？')){ tombstoneStore.add([id]); vocabList =vocabList.filter(v => v.id !== id); selectedIds.delete(id); renderDictionary(); await saveToCloud(true); showToast('已删除'); } }
         function toggleSelectItem(id, checkbox) { if (checkbox.checked) selectedIds.add(id); else selectedIds.delete(id); updateBatchUI(); }
         function toggleSelectAll() { const allCb = document.getElementById('selectAllCheckbox'); const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleIds = new Set(); checkboxes.forEach(cb => { const id = parseInt(cb.dataset.id); visibleIds.add(id); if (allCb.checked) { cb.checked = true; selectedIds.add(id); } else { cb.checked = false; selectedIds.delete(id); } }); updateBatchUI(); }
         function updateBatchUI() { const count = selectedIds.size; const btn = document.getElementById('deleteSelectedBtn'); const sep = document.getElementById('batchSep'); const countEl = document.getElementById('selectedCount'); const allCb = document.getElementById('selectAllCheckbox'); if (btn) { if (count > 0) { btn.classList.remove('hidden'); if (sep) sep.classList.remove('hidden'); countEl.textContent = count; const checkboxes = document.querySelectorAll('.dict-checkbox'); const visibleCount = checkboxes.length; if (allCb) allCb.indeterminate = count > 0 && count < visibleCount; if (allCb) allCb.checked = count > 0 && count === visibleCount; } else { btn.classList.add('hidden'); if (sep) sep.classList.add('hidden'); countEl.textContent = '0'; if (allCb) { allCb.checked = false; allCb.indeterminate = false; } } } }
-        async function deleteSelected() { if (selectedIds.size === 0) return; if (!confirm(`确定删除已选的 ${selectedIds.size} 个条目吗？此操作不可撤销。`)) return; vocabList = vocabList.filter(v => !selectedIds.has(v.id)); selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已删除'); }
+        async function deleteSelected() { if (selectedIds.size === 0) return; if (!confirm(`确定删除已选的 ${selectedIds.size} 个条目吗？此操作不可撤销。`)) return; tombstoneStore.add([...selectedIds]); vocabList =vocabList.filter(v => !selectedIds.has(v.id)); selectedIds.clear(); renderDictionary(); await saveToCloud(true); updateDashboard(); showToast('已删除'); }
         async function saveSettings() { localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim()); localStorage.setItem('gh_gist_id', document.getElementById('ghGistId').value.trim()); localStorage.setItem('ds_token', document.getElementById('dsToken').value.trim()); localStorage.setItem('apiBaseUrl', document.getElementById('apiBaseUrl').value.trim()); localStorage.setItem('apiModel', document.getElementById('apiModel').value.trim()); showToast('配置已保存'); if(githubAPI.isConfigured()) await syncFromCloud(); showView('homeView'); }
         function clearData() { if(confirm('危险：将抹除本地所有记忆数据与 API 配置！确定？')) { localStorage.clear(); location.reload(); } }
         
