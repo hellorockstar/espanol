@@ -2018,7 +2018,8 @@
         }
 
         // ================= AI 智能质检与极速响应更新 (词典模式/教研模式分轨) =================
-        async function runAIQualityControl(text, isSentence, sourceName) {
+        // R3 补充：inflection = { lemma, form }（可选，仅 updateSingleItem 对变位/词形变化词条传入），其余调用方不传、行为不变
+        async function runAIQualityControl(text, isSentence, sourceName, inflection = null) {
             const apiKey = apiConfig.getDsToken();
             if (!apiKey) return { word: text.trim(), meaning_en: '', meaning_zh: '（释义待抓取...）', source: sourceName, status: 'pending' };
             
@@ -2030,6 +2031,12 @@ Rules:
 3. Provide precise EN Core (English) and ZH Supplement (Chinese) meanings. Do NOT hard-translate Spanish names into Chinese phonetics.
 4. Return strictly JSON with keys: "clean_text", "meaning_en", "meaning_zh".`
                 : `You are a Spanish dictionary. Provide ULTRA-CONCISE translations (1-3 words max, NO long explanatory brackets). Return strictly JSON with keys: "clean_text" (base form/lemma), "pos" (abbreviated: "v."/"n.m."/"n.f."/"adj."/"adv."/"pron."/"prep."/"conj."), "meaning_en" (ultra-concise EN translation), "meaning_zh" (ultra-concise ZH translation).`;
+            const inflectionRules = (!isSentence && inflection) ? `
+IMPORTANT: The input is an INFLECTED form, not the lemma. Lemma: "${inflection.lemma || ''}"${inflection.form ? `; inflection note: "${inflection.form}"` : ''}.
+- "meaning_en" and "meaning_zh" must translate THIS EXACT FORM, never the lemma/infinitive.
+- Conjugated verb: put the subject pronoun in parentheses, e.g. comemos → "(we) eat", 我们吃.
+- Noun/adjective inflection: base translation plus a short gender/number tag, e.g. sucios → "dirty (masc. pl.)", 脏的（阳性复数）. This tag overrides the "no brackets" rule.
+- "clean_text" must still be the lemma.` : '';
 
             try {
                 const res = await fetch(apiConfig.getBaseUrl(), {
@@ -2037,7 +2044,7 @@ Rules:
                     body: JSON.stringify({
                         model: apiConfig.getModel(),
                         messages: [
-                            { role: 'system', content: systemPrompt },
+                            { role: 'system', content: systemPrompt + inflectionRules },
                             { role: 'user', content: `Input (${isSentence ? 'Sentence' : 'Word'}): "${text}"` }
                         ], response_format: { type: "json_object" }
                     })
@@ -2083,7 +2090,11 @@ Rules:
             }
             
             showToast(`更新中: ${item.word}...`);
-            const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2');
+            // R3 补充：变位/词形变化判定——单词，且 form 非空，或 lemma 存在且与 word 不同（忽略大小写）
+            const isInflected = item.itemType !== 'sentence' && (!!(item.form || '').trim()
+                || (!!(item.lemma || '').trim() && item.lemma.trim().toLowerCase() !== (item.word || '').trim().toLowerCase()));
+            const qc = await runAIQualityControl(item.word, item.itemType === 'sentence', item.source || 'Nuevo Prisma A1-A2',
+                isInflected ? { lemma: item.lemma || '', form: item.form || '' } : null);
             // R3：AI 失败（未配置/超时/返回异常）→ 一个字段都不写，原释义保留
             if (qc.status !== 'active') {
                 renderDictionary();
@@ -2091,7 +2102,14 @@ Rules:
                 return;
             }
             // R3：只用非空值覆盖释义；不改 word（变位词不被改成原形，句子不被 AI 改写）
-            if (qc.meaning_en) item.meaning_en = qc.meaning_en;
+            let newEn = qc.meaning_en;
+            // R3 补充兜底：仅动词（词性以 v 开头）的变位词把 "we eat" 规范为 "(we) eat"；名词/形容词释义不动
+            const posForCheck = item.pos || qc.pos || '';
+            if (isInflected && newEn && /^v/i.test(posForCheck.trim())) {
+                const m = newEn.trim().match(/^(we|they|i|you|he|she)\s+(.+)$/i);
+                if (m) newEn = `(${m[1].toLowerCase()}) ${m[2]}`;
+            }
+            if (newEn) item.meaning_en = newEn;
             if (qc.meaning_zh) item.meaning_zh = qc.meaning_zh;
             if (item.itemType !== 'sentence' && !item.pos && qc.pos) item.pos = qc.pos;
             item.status = 'active';
