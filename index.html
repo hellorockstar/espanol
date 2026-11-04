@@ -781,6 +781,12 @@
         }
         function resetTokenUsage() { localStorage.setItem('ds_token_usage', '0'); updateTokenDisplay(); }
 
+        // M1：所有拼进 innerHTML 的数据统一走 escapeHtml（数据来自导入/AI/云端，未转义会导致 XSS 与 < & 等字符显示错乱）
+        function escapeHtml(v) {
+            return String(v === undefined || v === null ? '' : v)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         function showToast(msg) {
             const toast = document.getElementById('toast');
             toast.innerText = msg; toast.style.opacity = '1';
@@ -1444,7 +1450,7 @@
                 allDueSentences.forEach(s => {
                     const lockStatus = checkSentenceLock(s);
                     if (!lockStatus.isLocked) dueList.push(s);
-                    else { lockedCount++; lockedHtml += `<div class="truncate">• [阻断生词: ${lockStatus.weakWords.join(', ')}] -> ${s.word}</div>`; }
+                    else { lockedCount++; lockedHtml += `<div class="truncate">• [阻断生词: ${escapeHtml(lockStatus.weakWords.join(', '))}] -> ${escapeHtml(s.word)}</div>`; }
                 });
                 const lockArea = document.getElementById('spellLockWarningArea');
                 if (lockedCount > 0) {
@@ -1706,7 +1712,7 @@
             }
             saveToCloud(true); showToast(`已纳入 "${lemma}" 到生词特训！`);
             btnEl.className = "text-xs px-2.5 py-1.5 bg-teal-50 text-teal-800 rounded border border-teal-200 font-normal transition cursor-default";
-            btnEl.innerHTML = `✓ 已存入: ${lemma}`;
+            btnEl.innerHTML = `✓ 已存入: ${escapeHtml(lemma)}`;
         }
 
         function renderSpellTokenDiff(userInput, target) {
@@ -1720,13 +1726,13 @@
                 const rawInput = i < iWords.length ? iWords[i] : '';
                 if (!iw) continue;
                 if (!tw) {
-                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + rawInput + '</span> ';
+                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + escapeHtml(rawInput) + '</span> ';
                 } else if (tw.toLowerCase() === iw.toLowerCase()) {
-                    html += '<span class="text-slate-400 mr-1">' + rawInput + '</span> ';
+                    html += '<span class="text-slate-400 mr-1">' + escapeHtml(rawInput) + '</span> ';
                 } else if (removeAccent(tw).toLowerCase() === removeAccent(iw).toLowerCase()) {
-                    html += '<span class="text-amber-700 font-medium underline decoration-wavy mr-1">' + rawInput + '</span> ';
+                    html += '<span class="text-amber-700 font-medium underline decoration-wavy mr-1">' + escapeHtml(rawInput) + '</span> ';
                 } else {
-                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + rawInput + '</span> ';
+                    html += '<span class="text-slate-400 font-medium line-through decoration-rose-500 decoration-wavy mr-1">' + escapeHtml(rawInput) + '</span> ';
                 }
             }
             return html.trim();
@@ -1743,13 +1749,13 @@
                 const rawTarget = i < tWords.length ? tWords[i] : '';
                 if (!tw) continue;
                 if (!iw) {
-                    html += '<span class="text-rose-600 font-medium mr-1">' + rawTarget + '</span> ';
+                    html += '<span class="text-rose-600 font-medium mr-1">' + escapeHtml(rawTarget) + '</span> ';
                 } else if (tw.toLowerCase() === iw.toLowerCase()) {
-                    html += '<span class="text-slate-900 mr-1">' + rawTarget + '</span> ';
+                    html += '<span class="text-slate-900 mr-1">' + escapeHtml(rawTarget) + '</span> ';
                 } else if (removeAccent(tw).toLowerCase() === removeAccent(iw).toLowerCase()) {
-                    html += '<span class="text-amber-600 font-medium mr-1">' + rawTarget + '</span> ';
+                    html += '<span class="text-amber-600 font-medium mr-1">' + escapeHtml(rawTarget) + '</span> ';
                 } else {
-                    html += '<span class="text-rose-600 font-medium mr-1">' + rawTarget + '</span> ';
+                    html += '<span class="text-rose-600 font-medium mr-1">' + escapeHtml(rawTarget) + '</span> ';
                 }
             }
             return html.trim();
@@ -1934,8 +1940,8 @@
                         </div>
                     </div>
                     <div class="flex flex-col space-y-1.5">
-                        <input type="text" value="${item.es.replace(/"/g, '&quot;')}" onchange="stagingItems[${idx}].es = this.value" class="w-full border border-slate-300 rounded p-2 font-medium text-slate-900 outline-none text-sm shadow-sm focus:border-slate-500 transition">
-                        <input type="text" value="${item.zh.replace(/"/g, '&quot;')}" onchange="stagingItems[${idx}].zh = this.value" class="w-full border border-slate-200 rounded p-2 text-slate-500 outline-none text-sm focus:border-slate-400 transition">
+                        <input type="text" value="${escapeHtml(item.es)}" onchange="stagingItems[${idx}].es = this.value" class="w-full border border-slate-300 rounded p-2 font-medium text-slate-900 outline-none text-sm shadow-sm focus:border-slate-500 transition">
+                        <input type="text" value="${escapeHtml(item.zh)}" onchange="stagingItems[${idx}].zh = this.value" class="w-full border border-slate-200 rounded p-2 text-slate-500 outline-none text-sm focus:border-slate-400 transition">
                     </div>
                 `; container.appendChild(row);
             });
@@ -2189,12 +2195,12 @@ Rules:
 
             for (let i = 0; i < cleanTarget.length; i++) {
                 let tw = cleanTarget[i]; let iw = inputIdx < cleanInput.length ? cleanInput[inputIdx] : null;
-                if (!iw) { errorIndices.push(i); diffHtml += `<span class="text-slate-900 font-medium underline decoration-wavy mr-1">${targetWords[i]}</span> `; } 
+                if (!iw) { errorIndices.push(i); diffHtml += `<span class="text-slate-900 font-medium underline decoration-wavy mr-1">${escapeHtml(targetWords[i])}</span> `; } 
                 else {
                     let twNoAccent = removeAccent(tw).toLowerCase(); let iwNoAccent = removeAccent(iw).toLowerCase();
-                    if (tw.toLowerCase() === iw.toLowerCase()) { diffHtml += `<span class="text-slate-500 mr-1">${targetWords[i]}</span> `; inputIdx++; } 
-                    else if (twNoAccent === iwNoAccent) { errorIndices.push(i); diffHtml += `<span class="text-amber-700 font-medium underline decoration-wavy mr-1" title="音调出入">${targetWords[i]}</span> `; inputIdx++; } 
-                    else { errorIndices.push(i); diffHtml += `<span class="text-slate-900 font-medium underline decoration-wavy mr-1" title="你输了: ${iw}">${targetWords[i]}</span> `; inputIdx++; }
+                    if (tw.toLowerCase() === iw.toLowerCase()) { diffHtml += `<span class="text-slate-500 mr-1">${escapeHtml(targetWords[i])}</span> `; inputIdx++; } 
+                    else if (twNoAccent === iwNoAccent) { errorIndices.push(i); diffHtml += `<span class="text-amber-700 font-medium underline decoration-wavy mr-1" title="音调出入">${escapeHtml(targetWords[i])}</span> `; inputIdx++; } 
+                    else { errorIndices.push(i); diffHtml += `<span class="text-slate-900 font-medium underline decoration-wavy mr-1" title="你输了: ${escapeHtml(iw)}">${escapeHtml(targetWords[i])}</span> `; inputIdx++; }
                 }
             }
             if (errorIndices.length > 0) {
@@ -2290,8 +2296,8 @@ Rules:
             const el = document.getElementById(containerId);
             if (!list.length) { el.innerHTML = '<div class="text-[11px] text-slate-400 py-1">（暂无近 7 天报告）</div>'; return; }
             el.innerHTML = list.map(r =>
-                `<button onclick="openReportPopover('${r.generatedAt}')" class="w-full text-left text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2.5 py-2 rounded-md transition flex items-center justify-between">
-                    <span>${formatReportDate(r.generatedAt)} · ${r.summary}</span><span class="text-slate-300">›</span>
+                `<button onclick="openReportPopover('${escapeHtml(r.generatedAt)}')" class="w-full text-left text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-2.5 py-2 rounded-md transition flex items-center justify-between">
+                    <span>${formatReportDate(r.generatedAt)} · ${escapeHtml(r.summary)}</span><span class="text-slate-300">›</span>
                 </button>`
             ).join('');
         }
@@ -2362,7 +2368,7 @@ Rules:
                 });
                 const currentOpt = filterSourceEl.value;
                 filterSourceEl.innerHTML = '<option value="all">全部来源</option>' +
-                    Array.from(sourcesSet).sort().map(s => `<option value="${s}" ${s===currentOpt?'selected':''}>${s}</option>`).join('');
+                    Array.from(sourcesSet).sort().map(s => `<option value="${escapeHtml(s)}" ${s===currentOpt?'selected':''}>${escapeHtml(s)}</option>`).join('');
             }
 
             let displayList = vocabList;
@@ -2407,24 +2413,24 @@ Rules:
                     tr.innerHTML = `
                         <td class="px-3 py-3 align-top"></td>
                         <td class="px-5 py-3 align-top space-y-1">
-                            <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-medium shadow-sm" rows="${isSentence ? 2 : 1}">${item.word}</textarea>
-                            ${!isSentence ? `<input type="text" id="edit_lemma_${item.id}" value="${item.lemma || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="原形 (lemma)">` : ''}
-                            ${!isSentence ? `<input type="text" id="edit_form_${item.id}" value="${item.form || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="变位标注 (如: 简单过去时·第一人称)">` : ''}
+                            <textarea id="edit_word_${item.id}" class="w-full border border-slate-300 rounded p-1.5 text-base outline-none text-slate-900 font-medium shadow-sm" rows="${isSentence ? 2 : 1}">${escapeHtml(item.word)}</textarea>
+                            ${!isSentence ? `<input type="text" id="edit_lemma_${item.id}" value="${escapeHtml(item.lemma || '')}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="原形 (lemma)">` : ''}
+                            ${!isSentence ? `<input type="text" id="edit_form_${item.id}" value="${escapeHtml(item.form || '')}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="变位标注 (如: 简单过去时·第一人称)">` : ''}
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
-                            ${!isSentence ? `<input type="text" id="edit_pos_${item.id}" value="${item.pos || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="词性 (n.m./v./adj.)">` : ''}
-                            <input type="text" id="edit_en_${item.id}" value="${item.meaning_en || ''}" class="w-full border border-slate-300 rounded p-1 text-sm outline-none text-slate-900 font-normal shadow-sm" placeholder="EN 核心">
-                            <input type="text" id="edit_zh_${item.id}" value="${item.meaning_zh || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="ZH 补充">
+                            ${!isSentence ? `<input type="text" id="edit_pos_${item.id}" value="${escapeHtml(item.pos || '')}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="词性 (n.m./v./adj.)">` : ''}
+                            <input type="text" id="edit_en_${item.id}" value="${escapeHtml(item.meaning_en || '')}" class="w-full border border-slate-300 rounded p-1 text-sm outline-none text-slate-900 font-normal shadow-sm" placeholder="EN 核心">
+                            <input type="text" id="edit_zh_${item.id}" value="${escapeHtml(item.meaning_zh || '')}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" placeholder="ZH 补充">
                         </td>
                         <td class="px-5 py-3 align-top">
-                            ${isSentence ? '<span class="text-xs text-slate-400">（句法留空）</span>' : `<textarea id="edit_ex_${item.id}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" rows="2" placeholder="西语语境">${item.example || ''}</textarea>`}
+                            ${isSentence ? '<span class="text-xs text-slate-400">（句法留空）</span>' : `<textarea id="edit_ex_${item.id}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm" rows="2" placeholder="西语语境">${escapeHtml(item.example || '')}</textarea>`}
                         </td>
                         <td class="px-5 py-3 align-top space-y-1">
                             <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium block w-max ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
-                            <input type="text" id="edit_src_${item.id}" value="${item.source || ''}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm mt-1" placeholder="来源">
+                            <input type="text" id="edit_src_${item.id}" value="${escapeHtml(item.source || '')}" class="w-full border border-slate-300 rounded p-1 text-xs outline-none text-slate-500 font-normal shadow-sm mt-1" placeholder="来源">
                         </td>
                         <td class="px-5 py-3 align-top">
-                            <input type="text" id="edit_unit_${item.id}" value="${item.unit || ''}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="Unit (如: Unit 1 / Pista 2)">
+                            <input type="text" id="edit_unit_${item.id}" value="${escapeHtml(item.unit || '')}" class="w-full border border-slate-200 rounded p-1 text-xs outline-none text-slate-400 font-mono shadow-sm" placeholder="Unit (如: Unit 1 / Pista 2)">
                         </td>
                         <td class="px-5 py-3 text-center align-top space-y-1.5">
                             <button onclick="saveEdit(${item.id})" class="block w-full text-white text-xs bg-slate-900 hover:bg-slate-800 py-1.5 rounded font-medium shadow-sm transition">保存</button>
@@ -2435,24 +2441,24 @@ Rules:
                     tr.innerHTML = `
                         <td class="px-3 py-3.5 align-top"><input type="checkbox" class="dict-checkbox" data-id="${item.id}" onchange="toggleSelectItem(${item.id}, this)" ${isSelected ? 'checked' : ''} class="cursor-pointer rounded"></td>
                         <td class="px-5 py-3.5 font-medium text-slate-900 align-top whitespace-normal min-w-[150px] text-base">
-                            ${item.word}
-                            ${!isSentence && item.lemma && item.lemma !== item.word ? `<span class="text-[11px] font-mono text-slate-400 block mt-0.5">${item.lemma}${item.form ? ' · ' + item.form : ''}</span>` : ''}
-                            ${item.pos && !isSentence ? `<span class="text-[11px] font-mono text-slate-400 ml-1.5">${item.pos}</span>` : ''}
+                            ${escapeHtml(item.word)}
+                            ${!isSentence && item.lemma && item.lemma !== item.word ? `<span class="text-[11px] font-mono text-slate-400 block mt-0.5">${escapeHtml(item.lemma)}${item.form ? ' · ' + escapeHtml(item.form) : ''}</span>` : ''}
+                            ${item.pos && !isSentence ? `<span class="text-[11px] font-mono text-slate-400 ml-1.5">${escapeHtml(item.pos)}</span>` : ''}
                             ${!isSentence && item.shadowOf ? `<span class="text-[10px] text-slate-300 block mt-0.5">🔁 重遇记录（正身重新学习中）</span>` : ''}
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-normal min-w-[150px]">
-                            <div class="font-normal text-slate-900 text-sm mb-0.5">${item.meaning_en || '-'}</div>
-                            <div class="text-xs text-slate-500">${item.meaning_zh || ''}</div>
+                            <div class="font-normal text-slate-900 text-sm mb-0.5">${escapeHtml(item.meaning_en || '-')}</div>
+                            <div class="text-xs text-slate-500">${escapeHtml(item.meaning_zh || '')}</div>
                         </td>
                         <td class="px-5 py-3.5 text-slate-500 align-top whitespace-normal min-w-[150px] text-xs">
-                            ${item.example ? `"${item.example}"` : '<span class="text-slate-300">（句法留空）</span>'}
+                            ${item.example ? `"${escapeHtml(item.example)}"` : '<span class="text-slate-300">（句法留空）</span>'}
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-nowrap">
                             <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium mr-1 ${isSentence ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-800'}">${isSentence ? '句法' : '词汇'}</span>
-                            <span class="text-[11px] font-mono text-slate-500 block mt-1.5 select-all">${item.source || 'Prisma Core'}</span>
+                            <span class="text-[11px] font-mono text-slate-500 block mt-1.5 select-all">${escapeHtml(item.source || 'Prisma Core')}</span>
                         </td>
                         <td class="px-5 py-3.5 align-top whitespace-nowrap">
-                            ${item.unit ? `<span class="text-[11px] font-mono text-slate-500">${item.unit}</span>` : '<span class="text-[11px] font-mono text-slate-300">-</span>'}
+                            ${item.unit ? `<span class="text-[11px] font-mono text-slate-500">${escapeHtml(item.unit)}</span>` : '<span class="text-[11px] font-mono text-slate-300">-</span>'}
                         </td>
                         <td class="px-5 py-3.5 text-center align-top space-x-3 whitespace-nowrap text-xs font-normal">
                             <button onclick="updateSingleItem(${item.id}, this)" class="text-teal-700 hover:text-teal-900 transition">更新</button>
@@ -2619,7 +2625,7 @@ Rules:
             vocabList.forEach(v => { if (v.source && v.source.trim() && v.source.trim() !== '-') sources.add(v.source.trim()); });
             const current = sel.value;
             let html = '<option value="__new__">＋ 新来源…</option>';
-            Array.from(sources).sort().forEach(s => { html += `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`; });
+            Array.from(sources).sort().forEach(s => { html += `<option value="${escapeHtml(s)}" ${s === current ? 'selected' : ''}>${escapeHtml(s)}</option>`; });
             sel.innerHTML = html;
             if (current && current !== '__new__' && sources.has(current)) sel.value = current;
             else if (sources.has('Nuevo Prisma A1-A2 Fusion')) sel.value = 'Nuevo Prisma A1-A2 Fusion';
@@ -2752,16 +2758,16 @@ Rules:
 
                     let summaryHtml = `共 <b>${inputData.length}</b> 条：`;
                     Object.entries(sourceCounts).forEach(([src, cnt]) => {
-                        summaryHtml += `<div class="mt-1">· ${src}（${cnt} 条）</div>`;
+                        summaryHtml += `<div class="mt-1">· ${escapeHtml(src)}（${cnt} 条）</div>`;
                     });
                     if (dupWords.length > 0) {
-                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">⚠️ 本批重复已合并：${dupWords.join('、')}</div>`;
+                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">⚠️ 本批重复已合并：${escapeHtml(dupWords.join('、'))}</div>`;
                     }
                     if (reencounterWords.length > 0) {
-                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">🔁 ${reencounterWords.length} 词已在词库，将重置进度重新学：${reencounterWords.join('、')}</div>`;
+                        summaryHtml += `<div class="mt-2 text-amber-700 text-xs">🔁 ${reencounterWords.length} 词已在词库，将重置进度重新学：${escapeHtml(reencounterWords.join('、'))}</div>`;
                     }
                     if (sameIdSkipped.length > 0) {
-                        summaryHtml += `<div class="mt-2 text-slate-500 text-xs">↩︎ ${sameIdSkipped.length} 条与词库同 id 同词，视为同一条已跳过：${sameIdSkipped.join('、')}</div>`;
+                        summaryHtml += `<div class="mt-2 text-slate-500 text-xs">↩︎ ${sameIdSkipped.length} 条与词库同 id 同词，视为同一条已跳过：${escapeHtml(sameIdSkipped.join('、'))}</div>`;
                     }
                     if (inputData.length === 0) { showToast(sameIdSkipped.length ? '所有条目已在词库中，无需导入' : '没有可导入的条目'); return; }
 
